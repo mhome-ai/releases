@@ -11,7 +11,7 @@ repository. This git tree is the release orchestrator only.
    publish.
 2. Later, push a product tag on **this** repo: `am1.2.3`, `nlr1.2.3`,
    `nlx1.2.3`, `dlr1.2.3`.
-3. The matching workflow job picks a self-hosted runner and runs
+3. The matching workflow file (one tag prefix, one job, one runner) runs
    `scripts/ci/run.sh` from a worktree of this repo. That script fetches the
    product source tags into sibling worktrees under `~/.mhome/work/<id>/` and
    runs the pack scripts in the product tree. Canonical checkouts at
@@ -19,8 +19,10 @@ repository. This git tree is the release orchestrator only.
 
 One workflow run is one machine. Native `nlr`/`nlx`/`nm`/`nw`, Desktop
 `am`/`aw`, Docker `dlr`/`dlx`. GitHub Latest for Desktop still lives on the
-asset tag `aX.Y.Z`; `am` and `aw` both publish onto that tag. Docker Catalog
-is written by whichever of `dlr`/`dlx` runs second for that version.
+asset tag `aX.Y.Z`; `am` and `aw` both publish onto that tag and share the
+`desktop-release` concurrency group. Docker Catalog is per platform:
+`docker/stable/linux-arm64/` and `docker/stable/linux-amd64/`. `dlr` and `dlx`
+do not wait for each other.
 
 Workflows never `git clone` and never `actions/checkout` product sources.
 Runners must already have `~/.mhome/{baycat,meowcore-rust,pallas-cat,releases,harness}`

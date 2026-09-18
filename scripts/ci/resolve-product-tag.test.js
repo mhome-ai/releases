@@ -2,10 +2,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const {
-  resolveNativeDispatch,
-  resolveProductTag,
-} = require("./resolve-product-tag");
+const { resolveProductTag } = require("./resolve-product-tag");
 
 test("parses independent native platform tags", () => {
   assert.deepEqual(resolveProductTag("nlr1.2.3"), {
@@ -48,19 +45,4 @@ test("rejects unknown tags", () => {
   assert.throws(() => resolveProductTag("n1.2.3"), /Invalid product release tag/);
   assert.throws(() => resolveProductTag("a1.2.3"), /Invalid product release tag/);
   assert.throws(() => resolveProductTag("d1.2.3"), /Invalid product release tag/);
-});
-
-test("native dispatch from tag does not read package.json", () => {
-  assert.deepEqual(
-    resolveNativeDispatch({ event: "push", ref: "nlr1.2.3" }),
-    { version: "1.2.3", platforms: ["linux-arm64"] }
-  );
-  assert.deepEqual(
-    resolveNativeDispatch({
-      event: "workflow_dispatch",
-      version: "1.2.3",
-      platform: "linux-amd64",
-    }),
-    { version: "1.2.3", platforms: ["linux-amd64"] }
-  );
 });

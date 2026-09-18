@@ -16,6 +16,12 @@ function workflowFiles() {
     .map((name) => `.github/workflows/${name}`);
 }
 
+function productWorkflows() {
+  return workflowFiles().filter(
+    (file) => !file.endsWith("/run-tagged.yaml")
+  );
+}
+
 test("workflows never clone and never use GitHub-hosted compile jobs", () => {
   for (const file of workflowFiles()) {
     const text = read(file);
@@ -38,15 +44,13 @@ test("native GitHub releases never steal Desktop Latest", () => {
   assert.match(script, /--draft=false --latest=false/);
 });
 
-test("product workflows only select a runner and call run-tagged.yaml", () => {
-  for (const file of [
-    ".github/workflows/native-runtime-release.yaml",
-    ".github/workflows/desktop-release.yaml",
-    ".github/workflows/docker-release.yaml",
-    ".github/workflows/deploy-native-install-script.yaml",
-  ]) {
+test("each product workflow is one job that calls run-tagged.yaml", () => {
+  const files = productWorkflows();
+  assert.ok(files.length >= 8, `expected split product workflows, got ${files.join(", ")}`);
+  for (const file of files) {
     const text = read(file);
     assert.match(text, /uses: \.\/\.github\/workflows\/run-tagged\.yaml/, file);
+    assert.doesNotMatch(text, /^\s+if:/m, file);
     assert.doesNotMatch(text, /worktree add --detach/, file);
     assert.doesNotMatch(text, /scripts\/ci\/run\.sh/, file);
   }
@@ -60,10 +64,12 @@ test("docker release is a complete per-platform product", () => {
   assert.match(script, /--platform "\$platform"/);
   assert.doesNotMatch(script, /skipping Docker Catalog/);
   assert.doesNotMatch(script, /require_cmd gh/);
-  const workflow = read(".github/workflows/docker-release.yaml");
-  assert.match(workflow, /docker-stable-linux-arm64/);
-  assert.match(workflow, /docker-stable-linux-amd64/);
-  assert.doesNotMatch(workflow, /group: docker-release/);
+  const arm = read(".github/workflows/docker-linux-arm64.yaml");
+  const amd = read(".github/workflows/docker-linux-amd64.yaml");
+  assert.match(arm, /docker-stable-linux-arm64/);
+  assert.match(amd, /docker-stable-linux-amd64/);
+  assert.doesNotMatch(arm, /group: docker-release/);
+  assert.doesNotMatch(amd, /group: docker-release/);
 });
 
 test("install workflow assumes a dedicated native-install environment", () => {
@@ -78,4 +84,12 @@ test("tagged orchestrator is taken from ~/.mhome/releases", () => {
   assert.match(text, /scripts\/ci\/run\.sh/);
   assert.match(text, /export WORK_ID=/);
   assert.match(text, /WORK_SUFFIX/);
+  assert.match(text, /inputs\.channel == 'native'/);
+  assert.match(text, /inputs\.channel == 'docker'/);
+});
+
+test("run.sh refuses a tag that does not match this runner", () => {
+  const text = read("scripts/ci/run.sh");
+  assert.match(text, /PRODUCT_CHANNEL" = "\$CHANNEL"/);
+  assert.match(text, /PRODUCT_PLATFORM" = "\$WORK_SUFFIX"/);
 });

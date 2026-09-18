@@ -1,0 +1,35 @@
+name: Release native windows
+
+on:
+  push:
+    tags:
+      - "nw[0-9]*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Product tag, for example nw1.2.3"
+        required: true
+        type: string
+      initialize_catalog:
+        description: "Initialize a missing platform Stable Catalog"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  run:
+    uses: ./.github/workflows/run-tagged.yaml
+    environment: native-runtime-release
+    concurrency:
+      group: native-runtime-stable-windows
+      cancel-in-progress: false
+    with:
+      runner_labels: '["self-hosted","Windows","X64"]'
+      channel: native
+      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      initialize_catalog: ${{ github.event_name == 'workflow_dispatch' && inputs.initialize_catalog || false }}
+      work_suffix: windows
+    secrets: inherit

@@ -72,59 +72,22 @@ function resolveProductTag(ref) {
   throw new Error(`Invalid product release tag: ${tag}`);
 }
 
-function resolveNativeDispatch({ event, ref, version, platform }) {
-  if (event === "push") {
-    const resolved = resolveProductTag(ref);
-    if (resolved.channel !== "native") {
-      throw new Error(`Invalid native release tag: ${ref}`);
-    }
-    return {
-      version: resolved.version,
-      platforms: [resolved.platform],
-    };
-  }
-  if (event !== "workflow_dispatch") {
-    throw new Error(`Unsupported release event: ${event}`);
-  }
-  if (!/^\d+\.\d+\.\d+$/.test(version || "")) {
-    throw new Error("Release version must be X.Y.Z");
-  }
-  const platforms = ["macos", "linux-arm64", "linux-amd64", "windows"];
-  if (platform !== "all" && !platforms.includes(platform)) {
-    throw new Error(`Invalid platform: ${platform}`);
-  }
-  return {
-    version,
-    platforms: platform === "all" ? platforms : [platform],
-  };
-}
-
 if (require.main === module) {
   try {
     const { values } = parseArgs({
       options: {
-        event: { type: "string" },
         ref: { type: "string" },
-        version: { type: "string" },
-        platform: { type: "string" },
-        channel: { type: "string" },
       },
     });
-    if (values.channel === "native" || values.event) {
-      const result = resolveNativeDispatch(values);
-      process.stdout.write(`version=${result.version}\n`);
-      process.stdout.write(`platforms=${JSON.stringify(result.platforms)}\n`);
-    } else {
-      const result = resolveProductTag(values.ref);
-      process.stdout.write(`channel=${result.channel}\n`);
-      process.stdout.write(`prefix=${result.prefix}\n`);
-      process.stdout.write(`platform=${result.platform}\n`);
-      process.stdout.write(`version=${result.version}\n`);
-      process.stdout.write(`sourceTag=${result.sourceTag}\n`);
-      process.stdout.write(`releaseTag=${result.releaseTag}\n`);
-      process.stdout.write(`withPallas=${result.withPallas}\n`);
-      process.stdout.write(`withMeowcore=${result.withMeowcore}\n`);
-    }
+    const result = resolveProductTag(values.ref);
+    process.stdout.write(`channel=${result.channel}\n`);
+    process.stdout.write(`prefix=${result.prefix}\n`);
+    process.stdout.write(`platform=${result.platform}\n`);
+    process.stdout.write(`version=${result.version}\n`);
+    process.stdout.write(`sourceTag=${result.sourceTag}\n`);
+    process.stdout.write(`releaseTag=${result.releaseTag}\n`);
+    process.stdout.write(`withPallas=${result.withPallas}\n`);
+    process.stdout.write(`withMeowcore=${result.withMeowcore}\n`);
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;
@@ -135,6 +98,5 @@ module.exports = {
   DESKTOP_PREFIXES,
   DOCKER_PREFIXES,
   NATIVE_PREFIXES,
-  resolveNativeDispatch,
   resolveProductTag,
 };
