@@ -1,0 +1,710 @@
+# Automatic desktop release (push tag a* / am* / al* / aw* only).
+# macOS release builds run on a self-hosted runner.
+# Docs: docs/RELEASE_CI.md
+#
+# Platform scope:
+#   tag push          → a / am / al / aw prefix; a expands to tagReleasePlatforms
+#   workflow_dispatch → explicit per-platform boolean inputs
+#   prepare outputs   → named booleans + canonical mhome-ai/releases tag aX.Y.Z
+#   Native runtime publishing uses native-runtime-release.yaml; Windows ships Client only.
+#
+# Private source token priority: repository GPR_TOKEN_OVERRIDE, then the legacy
+# organization GPR_TOKEN. Each consumer receives it only for its own step.
+
+name: Release Tauri app
+
+on:
+  push:
+    tags:
+      - "a[0-9]*"
+      - "am[0-9]*"
+      - "al[0-9]*"
+      - "aw[0-9]*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Pre-flight only (no build, no publish)"
+        type: boolean
+        default: true
+      release_mac:
+        description: "Build and publish macOS"
+        type: boolean
+        default: true
+      release_windows:
+        description: "Build and publish Windows (must be enabled by release policy)"
+        type: boolean
+        default: false
+      release_linux:
+        description: "Build and publish Linux (must be enabled by release policy)"
+        type: boolean
+        default: false
+
+concurrency:
+  # Every Desktop version shares one Latest pointer and mutable platform manifest.
+  group: desktop-release
+  cancel-in-progress: false
+  queue: max
+
+permissions:
+  contents: write
+
+# Formal builds require baycat/pallas vX.Y.Z and the independently
+# versioned meowcore-rust tag pinned in baycat release/sources/dependencies.json.
+
+jobs:
+  prepare:
+    runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release_tag: ${{ steps.scope.outputs.release_tag }}
+      platforms_json: ${{ steps.scope.outputs.platforms_json }}
+      release_mac: ${{ steps.scope.outputs.release_mac }}
+      release_windows: ${{ steps.scope.outputs.release_windows }}
+      release_linux: ${{ steps.scope.outputs.release_linux }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Read version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            node scripts/ci/resolve-product-tag.js --ref "${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Tag a/am/al/aw on mhome-ai/releases to publish Desktop"
+            exit 1
+          fi
+
+      - uses: ./.github/actions/prepare-mhome-sources
+        id: release_sources
+        with:
+          version: ${{ steps.version.outputs.version }}
+          with_meowcore: "true"
+          with_pallas: "true"
+          source_token: ${{ secrets.GPR_TOKEN_OVERRIDE || secrets.GPR_TOKEN }}
+          machine_lock: macos-primary
+
+      - name: Release platform scope
+        id: scope
+        shell: bash
+        working-directory: ${{ steps.release_sources.outputs.baycat_dir }}
+        run: |
+          node scripts/release/resolve-release-platforms.js \
+            --event push \
+            --ref "${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify release notes
+        working-directory: ${{ steps.release_sources.outputs.baycat_dir }}
+        run: node scripts/release/format-release-notes.js --version "${{ steps.version.outputs.version }}" >/dev/null
+
+      - uses: ./.github/actions/cleanup-mhome-sources
+        if: always()
+        with:
+          source_root: ${{ steps.release_sources.outputs.source_root }}
+          machine_lock: macos-primary
+
+  preflight-mac:
+    if: needs.prepare.outputs.release_mac == 'true'
+    needs: prepare
+    runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/prepare-mhome-sources
+        id: release_sources
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          with_meowcore: "true"
+          with_pallas: "true"
+          source_token: ${{ secrets.GPR_TOKEN_OVERRIDE || secrets.GPR_TOKEN }}
+          machine_lock: macos-primary
+
+      - name: Verify Mac runner
+        run: bash "${{ steps.release_sources.outputs.baycat_dir }}/scripts/release/mac/check-mac-runner.sh" --skip-rust
+
+      - name: Verify GitHub Secrets (Mac)
+        run: |
+          missing=""
+          [ "${{ secrets.UPDATER_PRIVATE_KEY != '' }}" = "true" ] || missing="$missing UPDATER_PRIVATE_KEY"
+          [ "${{ secrets.RELEASE_REPO_TOKEN != '' }}" = "true" ] || missing="$missing RELEASE_REPO_TOKEN"
+          [ "${{ secrets.APPLE_ID != '' }}" = "true" ] || missing="$missing APPLE_ID"
+          [ "${{ secrets.APPLE_ID_PASSWORD != '' }}" = "true" ] || missing="$missing APPLE_ID_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "Missing secrets:$missing"
+            exit 1
+          fi
+
+      - name: Verify signed Runtime compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${{ steps.release_sources.outputs.baycat_dir }}"
+          directory="$(mktemp -d "${TMPDIR:-/tmp}/meowlink-desktop-preflight.XXXXXX")"
+          trap 'rm -rf "$directory"' EXIT
+          catalog_url="$(node scripts/release/native/runtime-catalog-config.js catalog-url)"
+          signature_url="$(node scripts/release/native/runtime-catalog-config.js signature-url)"
+          curl -fL --retry 3 --proto '=https' --tlsv1.2 \
+            "$catalog_url" -o "$directory/catalog.json"
+          curl -fL --retry 3 --proto '=https' --tlsv1.2 \
+            "$signature_url" -o "$directory/catalog.json.minisig"
+          node scripts/release/native/runtime-catalog-config.js public-key-file \
+            > "$directory/catalog.pub"
+          cargo run --profile local-package --quiet -p runtime-release-verify --bin runtime-release-verify -- \
+            --catalog "$directory/catalog.json" \
+            --signature "$directory/catalog.json.minisig" \
+            --public-key "$directory/catalog.pub" \
+            --desktop-version "${{ needs.prepare.outputs.version }}"
+
+      - name: Mac release preflight
+        run: |
+          cd "${{ steps.release_sources.outputs.baycat_dir }}"
+          bash scripts/release/mac/preflight-mac-release.sh --tag ${{ needs.prepare.outputs.release_tag }} --sign-smoke
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+
+      - name: Remove isolated preflight sources
+        if: always() && steps.release_sources.outputs.source_root != ''
+        shell: bash
+      - uses: ./.github/actions/cleanup-mhome-sources
+        if: always()
+        with:
+          source_root: ${{ steps.release_sources.outputs.source_root }}
+          machine_lock: macos-primary
+
+  preflight-windows:
+    if: needs.prepare.outputs.release_windows == 'true'
+    needs: prepare
+    runs-on: [self-hosted, Windows, X64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify private release sources on GitHub
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GPR_TOKEN_OVERRIDE || secrets.GPR_TOKEN }}
+        run: |
+          [ -n "${GH_TOKEN:-}" ] || {
+            echo "::error::GPR_TOKEN_OVERRIDE or GPR_TOKEN is required."
+            exit 1
+          }
+          PALLAS_TAG="v${{ needs.prepare.outputs.version }}"
+          gh api "repos/mhome-ai/pallas-cat/git/ref/tags/${PALLAS_TAG}" >/dev/null || {
+            echo "::error::Cannot read mhome-ai/pallas-cat tag ${PALLAS_TAG}."
+            exit 1
+          }
+          gh api repos/mhome-ai/meowcore-rust >/dev/null || {
+            echo "::error::Cannot access mhome-ai/meowcore-rust (private)."
+            exit 1
+          }
+          echo "Private release sources are accessible"
+
+      - name: Verify GitHub Secrets (Windows)
+        shell: bash
+        run: |
+          missing=""
+          [ "${{ secrets.UPDATER_PRIVATE_KEY != '' }}" = "true" ] || missing="$missing UPDATER_PRIVATE_KEY"
+          [ "${{ secrets.RELEASE_REPO_TOKEN != '' }}" = "true" ] || missing="$missing RELEASE_REPO_TOKEN"
+          [ "${{ secrets.SSL_COM_USERNAME != '' }}" = "true" ] || missing="$missing SSL_COM_USERNAME"
+          [ "${{ secrets.SSL_COM_PASSWORD != '' }}" = "true" ] || missing="$missing SSL_COM_PASSWORD"
+          [ "${{ secrets.SSL_COM_CREDENTIAL_ID != '' }}" = "true" ] || missing="$missing SSL_COM_CREDENTIAL_ID"
+          [ "${{ secrets.SSL_COM_TOTP_SECRET != '' }}" = "true" ] || missing="$missing SSL_COM_TOTP_SECRET"
+          if [ -n "$missing" ]; then
+            echo "Missing secrets:$missing"
+            exit 1
+          fi
+
+      - name: Windows release preflight
+        shell: bash
+        run: node scripts/release/verify-release-readiness.js --strict --platforms windows --tag ${{ needs.prepare.outputs.release_tag }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
+          SSL_COM_USERNAME: ${{ secrets.SSL_COM_USERNAME }}
+          SSL_COM_PASSWORD: ${{ secrets.SSL_COM_PASSWORD }}
+          SSL_COM_CREDENTIAL_ID: ${{ secrets.SSL_COM_CREDENTIAL_ID }}
+          SSL_COM_TOTP_SECRET: ${{ secrets.SSL_COM_TOTP_SECRET }}
+
+  preflight-linux:
+    if: needs.prepare.outputs.release_linux == 'true'
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify private release sources on GitHub
+        env:
+          GH_TOKEN: ${{ secrets.GPR_TOKEN_OVERRIDE || secrets.GPR_TOKEN }}
+        run: |
+          [ -n "${GH_TOKEN:-}" ] || {
+            echo "::error::GPR_TOKEN_OVERRIDE or GPR_TOKEN is required."
+            exit 1
+          }
+          PALLAS_TAG="v${{ needs.prepare.outputs.version }}"
+          gh api "repos/mhome-ai/pallas-cat/git/ref/tags/${PALLAS_TAG}" >/dev/null || {
+            echo "::error::Cannot read mhome-ai/pallas-cat tag ${PALLAS_TAG}."
+            exit 1
+          }
+          gh api repos/mhome-ai/meowcore-rust >/dev/null || {
+            echo "::error::Cannot access mhome-ai/meowcore-rust (private)."
+            exit 1
+          }
+          echo "Private release sources are accessible"
+
+      - name: Verify Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Verify GitHub Secrets (Linux)
+        run: |
+          missing=""
+          [ "${{ secrets.UPDATER_PRIVATE_KEY != '' }}" = "true" ] || missing="$missing UPDATER_PRIVATE_KEY"
+          [ "${{ secrets.RELEASE_REPO_TOKEN != '' }}" = "true" ] || missing="$missing RELEASE_REPO_TOKEN"
+          if [ -n "$missing" ]; then
+            echo "Missing secrets:$missing"
+            exit 1
+          fi
+
+      - name: Linux release preflight
+        run: node scripts/release/verify-release-readiness.js --strict --platforms linux --tag ${{ needs.prepare.outputs.release_tag }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
+
+  build-macos:
+    if: |
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)) &&
+      needs.prepare.outputs.release_mac == 'true' &&
+      needs.preflight-mac.result == 'success'
+    needs: [prepare, preflight-mac]
+    runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/prepare-mhome-sources
+        id: release_sources
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          with_meowcore: "true"
+          with_pallas: "true"
+          baycat_version_mode: "match"
+          source_token: ${{ secrets.GPR_TOKEN_OVERRIDE || secrets.GPR_TOKEN }}
+          machine_lock: macos-primary
+      - name: Verify Mac runner
+        run: bash "${{ steps.release_sources.outputs.baycat_dir }}/scripts/release/mac/check-mac-runner.sh"
+
+      - name: Install dependencies and frontend
+        run: |
+          cd "${{ steps.release_sources.outputs.baycat_dir }}"
+          bash scripts/ci/ci-install-release-deps.sh "${{ needs.prepare.outputs.version }}"
+
+      - name: Prepare Mac build cache (clear on tag, restore on Re-run)
+        run: |
+          cd "${{ steps.release_sources.outputs.baycat_dir }}"
+          bash scripts/release/mac/mac-release-persist.sh prepare-run \
+            "${{ needs.prepare.outputs.version }}" \
+            "${{ github.run_attempt }}"
+
+      - name: Build, sign, notarize, stage macOS bundles
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          cd "${{ steps.release_sources.outputs.baycat_dir }}"
+          bash scripts/release/mac/build-mac-release-bundles.sh --resume --allow-unstapled
+
+      - name: Notarize DMGs (fallback if not stapled in build)
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          cd "${{ steps.release_sources.outputs.baycat_dir }}"
+          bash scripts/ci/ci-notarize-staged-dmgs.sh --allow-unstapled
+
+      - name: Verify DMG notarization (staple, no post-notarize changes)
+        run: |
+          cd "${{ steps.release_sources.outputs.baycat_dir }}"
+          bash scripts/release/mac/verify-mac-dmg-notarization.sh --allow-unstapled
+
+      # Mac-only: publish here (no separate publish job). upload-artifact below is CI backup only.
+      - name: Build latest.json and publish to mhome-ai/releases
+        if: needs.prepare.outputs.release_windows != 'true' && needs.prepare.outputs.release_linux != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+        run: |
+          cd "${{ steps.release_sources.outputs.baycat_dir }}"
+          notes_file="${{ steps.release_sources.outputs.baycat_dir }}/build/release-notes.md"
+          node scripts/release/format-release-notes.js \
+            --version "${{ needs.prepare.outputs.version }}" > "$notes_file"
+          sh scripts/ci/ci-publish-mac-from-staging.sh \
+            --repo mhome-ai/releases \
+            --tag "${{ needs.prepare.outputs.release_tag }}" \
+            --notes-file "$notes_file" \
+            --allow-unstapled
+
+      - name: Verify staging before artifact upload
+        run: |
+          cd "${{ steps.release_sources.outputs.baycat_dir }}"
+          sh scripts/release/mac/verify-mac-staging.sh
+
+      - name: Upload macOS artifacts for combined macOS + Windows release
+        if: needs.prepare.outputs.release_windows == 'true'
+        env:
+          ACTIONS_ARTIFACT_UPLOAD_TIMEOUT_MS: 1200000
+        uses: actions/upload-artifact@v4
+        with:
+          name: mhome-macos-release
+          path: ${{ steps.release_sources.outputs.baycat_dir }}/build/release-staging/macos/
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload macOS artifacts to GitHub (backup for mac-only)
+        if: needs.prepare.outputs.release_windows != 'true' && needs.prepare.outputs.release_linux != 'true'
+        continue-on-error: true
+        env:
+          ACTIONS_ARTIFACT_UPLOAD_TIMEOUT_MS: 1200000
+        uses: actions/upload-artifact@v4
+        with:
+          name: mhome-macos-release
+          path: ${{ steps.release_sources.outputs.baycat_dir }}/build/release-staging/macos/
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
+
+      - uses: ./.github/actions/cleanup-mhome-sources
+        if: always()
+        with:
+          source_root: ${{ steps.release_sources.outputs.source_root }}
+          machine_lock: macos-primary
+  build-windows:
+    if: |
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)) &&
+      needs.prepare.outputs.release_windows == 'true' &&
+      needs.preflight-windows.result == 'success'
+    needs: [prepare, preflight-windows]
+    runs-on: [self-hosted, Windows, X64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - uses: ./.github/actions/prepare-mhome-sources
+        id: release_sources
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          with_meowcore: "true"
+          with_pallas: "true"
+          baycat_version_mode: "match"
+          source_token: ${{ secrets.GPR_TOKEN_OVERRIDE || secrets.GPR_TOKEN }}
+          machine_lock: ""
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            ${{ steps.release_sources.outputs.baycat_dir }} -> target
+            ${{ steps.release_sources.outputs.baycat_dir }}/tauri -> target
+          cache-on-failure: false
+
+      - name: Install dependencies and frontend
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        shell: bash
+        run: |
+          cd "${{ steps.release_sources.outputs.baycat_dir }}"
+          bash scripts/ci/ci-install-release-deps.sh "${{ needs.prepare.outputs.version }}"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install CodeSignTool
+        id: codesign_tool
+        shell: pwsh
+        run: |
+          $toolRoot = Join-Path $env:RUNNER_TEMP ('meow-codesign-' + [guid]::NewGuid())
+          $zip = $toolRoot + '.zip'
+          Invoke-WebRequest -Uri 'https://www.ssl.com/download/codesigntool-for-windows/' -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $toolRoot -Force
+          Remove-Item -LiteralPath $zip
+          "home=$toolRoot" >> $env:GITHUB_OUTPUT
+
+      - name: Build Windows (signed)
+        shell: bash
+        run: cd "${{ steps.release_sources.outputs.baycat_dir }}" && npm run tauri:build:signed
+        env:
+          CODESIGNTOOL_HOME: ${{ steps.codesign_tool.outputs.home }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
+          SSL_COM_USERNAME: ${{ secrets.SSL_COM_USERNAME }}
+          SSL_COM_PASSWORD: ${{ secrets.SSL_COM_PASSWORD }}
+          SSL_COM_CREDENTIAL_ID: ${{ secrets.SSL_COM_CREDENTIAL_ID }}
+          SSL_COM_TOTP_SECRET: ${{ secrets.SSL_COM_TOTP_SECRET }}
+
+      - name: Verify Windows installer signatures
+        shell: pwsh
+        working-directory: ${{ steps.release_sources.outputs.baycat_dir }}
+        run: |
+          $root = Join-Path (Get-Location) 'tauri/target/release'
+          $files = @(Get-ChildItem "$root/bundle/nsis/*.exe")
+          if ($files.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
+            if ($signature.Status -ne 'Valid' -or !$signature.TimeStamperCertificate) { throw "Invalid installer signature: $file" }
+            if (!(Test-Path -LiteralPath ($file.FullName + '.sig'))) { throw "Missing updater signature: $file" }
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mhome-windows-release
+          path: |
+            ${{ steps.release_sources.outputs.baycat_dir }}/tauri/target/release/bundle/nsis/*.exe
+            ${{ steps.release_sources.outputs.baycat_dir }}/tauri/target/release/bundle/nsis/*.sig
+          if-no-files-found: error
+
+      - uses: ./.github/actions/cleanup-mhome-sources
+        if: always()
+        with:
+          source_root: ${{ steps.release_sources.outputs.source_root }}
+          machine_lock: ""
+  build-linux:
+    if: |
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)) &&
+      needs.prepare.outputs.release_linux == 'true' &&
+      needs.preflight-linux.result == 'success'
+    needs: [prepare, preflight-linux]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - uses: ./.github/actions/prepare-mhome-sources
+        id: release_sources
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          with_meowcore: "true"
+          with_pallas: "true"
+          baycat_version_mode: "match"
+          source_token: ${{ secrets.GPR_TOKEN_OVERRIDE || secrets.GPR_TOKEN }}
+          machine_lock: ""
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            ${{ steps.release_sources.outputs.baycat_dir }} -> target
+            ${{ steps.release_sources.outputs.baycat_dir }}/tauri -> target
+          cache-on-failure: false
+
+      - name: Install dependencies and frontend
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: |
+          cd "${{ steps.release_sources.outputs.baycat_dir }}"
+          bash scripts/ci/ci-install-release-deps.sh "${{ needs.prepare.outputs.version }}"
+
+      - name: Build Linux (signed)
+        run: cd "${{ steps.release_sources.outputs.baycat_dir }}" && npm run tauri:build:signed
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mhome-linux-release
+          path: |
+            ${{ steps.release_sources.outputs.baycat_dir }}/tauri/target/release/bundle/appimage/*.AppImage
+            ${{ steps.release_sources.outputs.baycat_dir }}/tauri/target/release/bundle/appimage/*.sig
+          if-no-files-found: error
+
+      - uses: ./.github/actions/cleanup-mhome-sources
+        if: always()
+        with:
+          source_root: ${{ steps.release_sources.outputs.source_root }}
+          machine_lock: ""
+  publish-windows:
+    if: |
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)) &&
+      needs.prepare.outputs.release_windows == 'true' &&
+      needs.prepare.outputs.release_mac != 'true' &&
+      needs.prepare.outputs.release_linux != 'true' &&
+      needs.build-windows.result == 'success'
+    needs: [prepare, build-windows]
+    runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mhome-windows-release
+          path: release-artifacts/windows
+
+      - name: Fetch existing latest.json (if release exists)
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+        run: |
+          bash scripts/ci/ci-fetch-release-latest-json.sh \
+            --repo mhome-ai/releases \
+            --tag "${{ needs.prepare.outputs.release_tag }}" \
+            --output-dir release-artifacts
+
+      - name: Build latest.json (Windows only)
+        run: |
+          notes_file="release-artifacts/release-notes.md"
+          node scripts/release/format-release-notes.js \
+            --version "${{ needs.prepare.outputs.version }}" > "$notes_file"
+          node scripts/release/generate-latest-json.js \
+            --repo mhome-ai/releases \
+            --tag "${{ needs.prepare.outputs.release_tag }}" \
+            --notes-file "$notes_file" \
+            --artifact-root release-artifacts \
+            --output release-artifacts/latest-patch.json \
+            --require-windows-only
+          node scripts/release/merge-latest-json.js \
+            --base release-artifacts/latest.json \
+            --patch release-artifacts/latest-patch.json \
+            --output release-artifacts/latest.json
+          rm -f release-artifacts/latest-patch.json
+
+      - name: Publish to mhome-ai/releases (gh CLI)
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+        run: |
+          bash scripts/release/publish-desktop-release-gh.sh \
+            --repo mhome-ai/releases \
+            --tag "${{ needs.prepare.outputs.release_tag }}" \
+            --notes-file release-artifacts/release-notes.md \
+            --artifact-root release-artifacts
+
+  publish-linux:
+    if: |
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)) &&
+      needs.prepare.outputs.release_linux == 'true' &&
+      needs.prepare.outputs.release_mac != 'true' &&
+      needs.prepare.outputs.release_windows != 'true' &&
+      needs.build-linux.result == 'success'
+    needs: [prepare, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mhome-linux-release
+          path: release-artifacts/linux
+
+      - name: Fetch existing latest.json (if release exists)
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+        run: |
+          bash scripts/ci/ci-fetch-release-latest-json.sh \
+            --repo mhome-ai/releases \
+            --tag "${{ needs.prepare.outputs.release_tag }}" \
+            --output-dir release-artifacts
+
+      - name: Build latest.json (Linux only)
+        run: |
+          notes_file="release-artifacts/release-notes.md"
+          node scripts/release/format-release-notes.js \
+            --version "${{ needs.prepare.outputs.version }}" > "$notes_file"
+          node scripts/release/generate-latest-json.js \
+            --repo mhome-ai/releases \
+            --tag "${{ needs.prepare.outputs.release_tag }}" \
+            --notes-file "$notes_file" \
+            --artifact-root release-artifacts \
+            --output release-artifacts/latest-patch.json \
+            --require-linux-only
+          node scripts/release/merge-latest-json.js \
+            --base release-artifacts/latest.json \
+            --patch release-artifacts/latest-patch.json \
+            --output release-artifacts/latest.json
+          rm -f release-artifacts/latest-patch.json
+
+      - name: Publish to mhome-ai/releases (gh CLI)
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+        run: |
+          bash scripts/release/publish-desktop-release-gh.sh \
+            --repo mhome-ai/releases \
+            --tag "${{ needs.prepare.outputs.release_tag }}" \
+            --notes-file release-artifacts/release-notes.md \
+            --artifact-root release-artifacts
+
+  publish:
+    if: |
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)) &&
+      needs.prepare.outputs.release_mac == 'true' &&
+      needs.prepare.outputs.release_windows == 'true' &&
+      needs.prepare.outputs.release_linux != 'true' &&
+      needs.build-macos.result == 'success' &&
+      needs.build-windows.result == 'success'
+    needs: [prepare, build-macos, build-windows]
+    runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mhome-macos-release
+          path: release-artifacts/macos
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mhome-windows-release
+          path: release-artifacts/windows
+
+      - name: Build latest.json (macOS + Windows)
+        run: |
+          notes_file="release-artifacts/release-notes.md"
+          node scripts/release/format-release-notes.js \
+            --version "${{ needs.prepare.outputs.version }}" > "$notes_file"
+          node scripts/release/generate-latest-json.js \
+            --repo mhome-ai/releases \
+            --tag "${{ needs.prepare.outputs.release_tag }}" \
+            --notes-file "$notes_file" \
+            --artifact-root release-artifacts \
+            --output release-artifacts/latest.json \
+            --require-mac-windows
+
+      - name: Publish to mhome-ai/releases (gh CLI)
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+        run: |
+          bash scripts/release/publish-desktop-release-gh.sh \
+            --repo mhome-ai/releases \
+            --tag "${{ needs.prepare.outputs.release_tag }}" \
+            --notes-file release-artifacts/release-notes.md \
+            --artifact-root release-artifacts

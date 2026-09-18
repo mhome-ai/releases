@@ -1,0 +1,817 @@
+name: Release Docker images
+
+on:
+  push:
+    tags:
+      - "d*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to plan without publishing, for example 0.9.8"
+        type: string
+        required: true
+
+concurrency:
+  # Stable promotion is a single global transaction. Different d-tags must not
+  # calculate from and race to replace the same stable Catalog concurrently.
+  group: docker-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  DOCKER_DISTRIBUTION_BASE_URL: ${{ vars.DOCKER_DISTRIBUTION_BASE_URL }}
+
+jobs:
+  docker-plan:
+    runs-on: [self-hosted, Linux]
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      publish_core: ${{ steps.images.outputs.publish_core }}
+      publish_camera: ${{ steps.images.outputs.publish_camera }}
+      publish_matter: ${{ steps.images.outputs.publish_matter }}
+      publish_llm: ${{ steps.images.outputs.publish_llm }}
+      publish_storage: ${{ steps.images.outputs.publish_storage }}
+    steps:
+      - name: Checkout orchestrator
+        uses: actions/checkout@v4
+        timeout-minutes: 5
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#d}"
+          else
+            VERSION="${{ inputs.version }}"
+            VERSION="${VERSION#v}"
+            VERSION="${VERSION#d}"
+          fi
+          node -e '
+            const { parseDockerProductVersion } = require("./scripts/lib/docker-product-version");
+            try { parseDockerProductVersion(process.argv[1]); }
+            catch (error) { console.error(`::error::${error.message}`); process.exit(1); }
+          ' "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Docker release version: $VERSION"
+
+      - name: Require Docker distribution configuration
+        shell: bash
+        env:
+          IS_PUBLISH: ${{ github.event_name == 'push' }}
+          BUCKET: ${{ vars.DOCKER_DISTRIBUTION_BUCKET }}
+          ROLE_ARN: ${{ vars.DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          [ -n "$DOCKER_DISTRIBUTION_BASE_URL" ] || { echo "::error::Missing DOCKER_DISTRIBUTION_BASE_URL"; exit 1; }
+          if [ "$IS_PUBLISH" = true ]; then
+            [ -n "$BUCKET" ] || { echo "::error::Missing DOCKER_DISTRIBUTION_BUCKET"; exit 1; }
+            [ -n "$ROLE_ARN" ] || { echo "::error::Missing DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN"; exit 1; }
+          fi
+
+      - name: Freeze Docker release trust and build metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          cp release/docker/catalog-signing-policy.json build/docker-catalog-signing-policy.json
+          node scripts/release/docker/generate-meowctl-build-metadata.js \
+            --version "${{ steps.version.outputs.version }}" \
+            --policy build/docker-catalog-signing-policy.json \
+            --output build/meowctl-release-build-metadata.json
+
+      - name: Load previous signed Docker Catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y minisign
+          catalog_url="${DOCKER_DISTRIBUTION_BASE_URL%/}/docker/stable/catalog.json"
+          bash scripts/release/docker/fetch-verified-docker-catalog.sh \
+            --policy build/docker-catalog-signing-policy.json \
+            "$catalog_url" build/previous-docker-catalog
+
+      - uses: ./.github/actions/prepare-mhome-sources
+        id: release_sources
+        with:
+          version: ${{ steps.version.outputs.version }}
+          with_meowcore: "true"
+          with_pallas: "false"
+          baycat_version_mode: "independent"
+          source_token: ${{ secrets.GPR_TOKEN_OVERRIDE || secrets.GPR_TOKEN }}
+          machine_lock: ""
+      - name: Verify Docker source topology
+        shell: bash
+        run: cd "${{ steps.release_sources.outputs.baycat_dir }}" && cargo metadata --manifest-path ../meowcore-rust/Cargo.toml --format-version 1 --no-deps >/dev/null
+
+      - name: Generate Docker release plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${{ steps.release_sources.outputs.baycat_dir }}"
+          mkdir -p build
+          cp "$GITHUB_WORKSPACE/build/docker-catalog-signing-policy.json" build/
+          cp "$GITHUB_WORKSPACE/build/meowctl-release-build-metadata.json" build/
+          if [ -f "$GITHUB_WORKSPACE/build/previous-docker-catalog/origin-absence-verification-required" ]; then
+            cp "$GITHUB_WORKSPACE/build/previous-docker-catalog/origin-absence-verification-required" build/
+          fi
+          previous_args=()
+          if [ -f "$GITHUB_WORKSPACE/build/previous-docker-catalog/catalog.json" ]; then
+            previous_args+=(--previous-catalog "$GITHUB_WORKSPACE/build/previous-docker-catalog/catalog.json")
+          fi
+          node scripts/release/docker/docker-release-plan.js \
+            --version "${{ steps.version.outputs.version }}" \
+            --output build/docker-release-manifest.json \
+            "${previous_args[@]}"
+          node --test \
+            scripts/lib/docker-product-version.test.js \
+            scripts/lib/docker-image-state.test.js \
+            scripts/lib/meowcore-source-receipt.test.js \
+            scripts/ci/release-source-dependencies.test.js \
+            scripts/ci/release-source-metadata.test.js \
+            scripts/release/docker/docker-release-plan.test.js \
+            scripts/release/docker/generate-docker-catalog-bundle.test.js \
+            scripts/release/docker/generate-docker-catalog.test.js \
+            scripts/release/docker/generate-docker-bootstrap.test.js \
+            scripts/release/docker/docker-catalog-signing-policy.test.js \
+            scripts/release/docker/generate-meowctl-build-metadata.test.js
+          cargo test --profile local-package --manifest-path tools/meowctl/Cargo.toml
+          npm ci \
+            --prefix nodes/matter/matter-adapter/sidecar \
+            --ignore-scripts \
+            --omit=dev \
+            --omit=optional \
+            --no-audit \
+            --no-fund
+          npm test --prefix nodes/matter/matter-adapter/sidecar
+          npm audit \
+            --prefix nodes/matter/matter-adapter/sidecar \
+            --omit=dev \
+            --omit=optional \
+            --audit-level=high
+          bash scripts/release/docker/fetch-verified-docker-catalog.test.sh
+          bash scripts/release/docker/docker-release-contract.test.sh
+          bash -n \
+            scripts/release/docker/fetch-verified-docker-catalog.sh \
+            scripts/release/docker/docker-publish-release-plan.sh \
+            scripts/release/docker/sign-docker-catalog.sh \
+            scripts/release/install-meow-docker.sh \
+            docker/meow-node-entrypoint.sh
+          node --check nodes/matter/matter-adapter/sidecar/src/ble-probe.js
+          cat build/docker-release-manifest.json
+
+      - name: Export changed image set
+        id: images
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="${{ steps.release_sources.outputs.baycat_dir }}/build/docker-release-manifest.json"
+          for mapping in core:meow-core camera:meow-node-camera matter:meow-node-matter llm:meow-node-llm storage:meow-node-storage; do
+            output="${mapping%%:*}"
+            image="${mapping#*:}"
+            value="$(node -e 'const p=require(process.argv[1]); process.stdout.write(String(p.releaseImages.some(x => x.id === process.argv[2])))' "$manifest" "$image")"
+            echo "publish_${output}=${value}" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Upload Docker release plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-release-plan
+          path: |
+            ${{ steps.release_sources.outputs.baycat_dir }}/build/docker-release-manifest.json
+            ${{ steps.release_sources.outputs.baycat_dir }}/build/docker-catalog-signing-policy.json
+            ${{ steps.release_sources.outputs.baycat_dir }}/build/meowctl-release-build-metadata.json
+            ${{ steps.release_sources.outputs.baycat_dir }}/build/release-source-provenance.json
+            ${{ steps.release_sources.outputs.baycat_dir }}/build/origin-absence-verification-required
+          if-no-files-found: error
+          overwrite: true
+
+      - uses: ./.github/actions/cleanup-mhome-sources
+        if: always()
+        with:
+          source_root: ${{ steps.release_sources.outputs.source_root }}
+          machine_lock: ""
+  docker-build-amd64:
+    needs: docker-plan
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout orchestrator
+        uses: actions/checkout@v4
+        timeout-minutes: 5
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Download Docker release plan
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-release-plan
+          path: build
+
+      - uses: ./.github/actions/prepare-mhome-sources
+        id: release_sources
+        with:
+          version: ${{ needs.docker-plan.outputs.version }}
+          with_meowcore: "true"
+          with_pallas: "false"
+          baycat_version_mode: "independent"
+          source_token: ${{ secrets.GPR_TOKEN_OVERRIDE || secrets.GPR_TOKEN }}
+          machine_lock: ""
+      - name: Copy release plan into isolated source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ steps.release_sources.outputs.baycat_dir }}/build"
+          cp build/docker-release-manifest.json "${{ steps.release_sources.outputs.baycat_dir }}/build/"
+          cp build/meowctl-release-build-metadata.json "${{ steps.release_sources.outputs.baycat_dir }}/tools/meowctl/release-build-metadata.json"
+          cp build/docker-catalog-signing-policy.json "${{ steps.release_sources.outputs.baycat_dir }}/tools/meowctl/release-signing-policy.json"
+          node scripts/release/docker/generate-meowctl-build-metadata.js \
+            --version "${{ needs.docker-plan.outputs.version }}" \
+            --policy build/docker-catalog-signing-policy.json \
+            --verify build/meowctl-release-build-metadata.json
+
+      - name: Verify Docker daemon
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker version
+          docker info
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-config-inline: |
+            [worker.oci]
+              max-parallelism = 1
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Initialize amd64 digest artifact
+        shell: bash
+        run: mkdir -p "${{ steps.release_sources.outputs.baycat_dir }}/build/docker-digests" && touch "${{ steps.release_sources.outputs.baycat_dir }}/build/docker-digests/.keep"
+
+      - name: Publish meow-core image for amd64
+        if: ${{ needs.docker-plan.outputs.publish_core == 'true' }}
+        shell: bash
+        run: cd "${{ steps.release_sources.outputs.baycat_dir }}" && bash scripts/release/docker/docker-publish-release-plan.sh build/docker-release-manifest.json --image meow-core --platform linux/amd64 --digest-output build/docker-digests/meow-core-linux-amd64.json
+
+      - name: Publish meow-node-camera image for amd64
+        if: ${{ needs.docker-plan.outputs.publish_camera == 'true' }}
+        shell: bash
+        run: cd "${{ steps.release_sources.outputs.baycat_dir }}" && bash scripts/release/docker/docker-publish-release-plan.sh build/docker-release-manifest.json --image meow-node-camera --platform linux/amd64 --digest-output build/docker-digests/meow-node-camera-linux-amd64.json
+
+      - name: Publish meow-node-matter image for amd64
+        if: ${{ needs.docker-plan.outputs.publish_matter == 'true' }}
+        shell: bash
+        run: cd "${{ steps.release_sources.outputs.baycat_dir }}" && bash scripts/release/docker/docker-publish-release-plan.sh build/docker-release-manifest.json --image meow-node-matter --platform linux/amd64 --digest-output build/docker-digests/meow-node-matter-linux-amd64.json
+
+      - name: Publish meow-node-llm image for amd64
+        if: ${{ needs.docker-plan.outputs.publish_llm == 'true' }}
+        shell: bash
+        run: cd "${{ steps.release_sources.outputs.baycat_dir }}" && bash scripts/release/docker/docker-publish-release-plan.sh build/docker-release-manifest.json --image meow-node-llm --platform linux/amd64 --digest-output build/docker-digests/meow-node-llm-linux-amd64.json
+
+      - name: Publish meow-node-storage image for amd64
+        if: ${{ needs.docker-plan.outputs.publish_storage == 'true' }}
+        shell: bash
+        run: cd "${{ steps.release_sources.outputs.baycat_dir }}" && bash scripts/release/docker/docker-publish-release-plan.sh build/docker-release-manifest.json --image meow-node-storage --platform linux/amd64 --digest-output build/docker-digests/meow-node-storage-linux-amd64.json
+
+      - name: Upload amd64 image digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-platform-digests-amd64
+          path: ${{ steps.release_sources.outputs.baycat_dir }}/build/docker-digests/
+          include-hidden-files: true
+          overwrite: true
+
+      - name: Build meowctl for linux/amd64
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${{ steps.release_sources.outputs.baycat_dir }}"
+          mkdir -p build/meowctl-linux-amd64
+          docker buildx build \
+            --platform linux/amd64 \
+            -f docker/meowctl.Dockerfile \
+            --output type=local,dest=build/meowctl-linux-amd64 \
+            tools/meowctl
+
+      - name: Upload linux/amd64 meowctl
+        uses: actions/upload-artifact@v4
+        with:
+          name: meowctl-linux-amd64
+          path: ${{ steps.release_sources.outputs.baycat_dir }}/build/meowctl-linux-amd64/meowctl
+          overwrite: true
+
+      - uses: ./.github/actions/cleanup-mhome-sources
+        if: always()
+        with:
+          source_root: ${{ steps.release_sources.outputs.source_root }}
+          machine_lock: ""
+  docker-build-arm64:
+    needs: docker-plan
+    if: ${{ github.event_name == 'push' }}
+    runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
+    steps:
+      - name: Checkout orchestrator
+        uses: actions/checkout@v4
+        timeout-minutes: 5
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Download Docker release plan
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-release-plan
+          path: build
+
+      - uses: ./.github/actions/prepare-mhome-sources
+        id: release_sources
+        with:
+          version: ${{ needs.docker-plan.outputs.version }}
+          with_meowcore: "true"
+          with_pallas: "false"
+          baycat_version_mode: "independent"
+          source_token: ${{ secrets.GPR_TOKEN_OVERRIDE || secrets.GPR_TOKEN }}
+          machine_lock: ""
+      - name: Copy release plan into isolated source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ steps.release_sources.outputs.baycat_dir }}/build"
+          cp build/docker-release-manifest.json "${{ steps.release_sources.outputs.baycat_dir }}/build/"
+          cp build/meowctl-release-build-metadata.json "${{ steps.release_sources.outputs.baycat_dir }}/tools/meowctl/release-build-metadata.json"
+          cp build/docker-catalog-signing-policy.json "${{ steps.release_sources.outputs.baycat_dir }}/tools/meowctl/release-signing-policy.json"
+          node scripts/release/docker/generate-meowctl-build-metadata.js \
+            --version "${{ needs.docker-plan.outputs.version }}" \
+            --policy build/docker-catalog-signing-policy.json \
+            --verify build/meowctl-release-build-metadata.json
+
+      - name: Verify Docker daemon
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker version
+          docker info
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-config-inline: |
+            [worker.oci]
+              max-parallelism = 1
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Initialize arm64 digest artifact
+        shell: bash
+        run: mkdir -p "${{ steps.release_sources.outputs.baycat_dir }}/build/docker-digests" && touch "${{ steps.release_sources.outputs.baycat_dir }}/build/docker-digests/.keep"
+
+      - name: Publish meow-core image for arm64
+        if: ${{ needs.docker-plan.outputs.publish_core == 'true' }}
+        shell: bash
+        run: cd "${{ steps.release_sources.outputs.baycat_dir }}" && bash scripts/release/docker/docker-publish-release-plan.sh build/docker-release-manifest.json --image meow-core --platform linux/arm64 --digest-output build/docker-digests/meow-core-linux-arm64.json
+
+      - name: Publish meow-node-camera image for arm64
+        if: ${{ needs.docker-plan.outputs.publish_camera == 'true' }}
+        shell: bash
+        run: cd "${{ steps.release_sources.outputs.baycat_dir }}" && bash scripts/release/docker/docker-publish-release-plan.sh build/docker-release-manifest.json --image meow-node-camera --platform linux/arm64 --digest-output build/docker-digests/meow-node-camera-linux-arm64.json
+
+      - name: Publish meow-node-matter image for arm64
+        if: ${{ needs.docker-plan.outputs.publish_matter == 'true' }}
+        shell: bash
+        run: cd "${{ steps.release_sources.outputs.baycat_dir }}" && bash scripts/release/docker/docker-publish-release-plan.sh build/docker-release-manifest.json --image meow-node-matter --platform linux/arm64 --digest-output build/docker-digests/meow-node-matter-linux-arm64.json
+
+      - name: Publish meow-node-llm image for arm64
+        if: ${{ needs.docker-plan.outputs.publish_llm == 'true' }}
+        shell: bash
+        run: cd "${{ steps.release_sources.outputs.baycat_dir }}" && bash scripts/release/docker/docker-publish-release-plan.sh build/docker-release-manifest.json --image meow-node-llm --platform linux/arm64 --digest-output build/docker-digests/meow-node-llm-linux-arm64.json
+
+      - name: Publish meow-node-storage image for arm64
+        if: ${{ needs.docker-plan.outputs.publish_storage == 'true' }}
+        shell: bash
+        run: cd "${{ steps.release_sources.outputs.baycat_dir }}" && bash scripts/release/docker/docker-publish-release-plan.sh build/docker-release-manifest.json --image meow-node-storage --platform linux/arm64 --digest-output build/docker-digests/meow-node-storage-linux-arm64.json
+
+      - name: Upload arm64 image digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-platform-digests-arm64
+          path: ${{ steps.release_sources.outputs.baycat_dir }}/build/docker-digests/
+          include-hidden-files: true
+          overwrite: true
+
+      - name: Build meowctl for linux/arm64
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${{ steps.release_sources.outputs.baycat_dir }}"
+          mkdir -p build/meowctl-linux-arm64
+          docker buildx build \
+            --platform linux/arm64 \
+            -f docker/meowctl.Dockerfile \
+            --output type=local,dest=build/meowctl-linux-arm64 \
+            tools/meowctl
+
+      - name: Upload linux/arm64 meowctl
+        uses: actions/upload-artifact@v4
+        with:
+          name: meowctl-linux-arm64
+          path: ${{ steps.release_sources.outputs.baycat_dir }}/build/meowctl-linux-arm64/meowctl
+          overwrite: true
+
+      - uses: ./.github/actions/cleanup-mhome-sources
+        if: always()
+        with:
+          source_root: ${{ steps.release_sources.outputs.source_root }}
+          machine_lock: ""
+  docker-merge:
+    needs:
+      - docker-plan
+      - docker-build-amd64
+      - docker-build-arm64
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout orchestrator
+        uses: actions/checkout@v4
+        timeout-minutes: 5
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Download Docker release plan
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-release-plan
+          path: build
+
+      - name: Download platform image digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: docker-platform-digests-*
+          path: build/docker-digests
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge meow-core image manifest
+        if: ${{ needs.docker-plan.outputs.publish_core == 'true' }}
+        shell: bash
+        run: bash scripts/release/docker/docker-publish-release-plan.sh build/docker-release-manifest.json --image meow-core --merge-digest-files build/docker-digests/meow-core-linux-amd64.json,build/docker-digests/meow-core-linux-arm64.json
+
+      - name: Merge meow-node-camera image manifest
+        if: ${{ needs.docker-plan.outputs.publish_camera == 'true' }}
+        shell: bash
+        run: bash scripts/release/docker/docker-publish-release-plan.sh build/docker-release-manifest.json --image meow-node-camera --merge-digest-files build/docker-digests/meow-node-camera-linux-amd64.json,build/docker-digests/meow-node-camera-linux-arm64.json
+
+      - name: Merge meow-node-matter image manifest
+        if: ${{ needs.docker-plan.outputs.publish_matter == 'true' }}
+        shell: bash
+        run: bash scripts/release/docker/docker-publish-release-plan.sh build/docker-release-manifest.json --image meow-node-matter --merge-digest-files build/docker-digests/meow-node-matter-linux-amd64.json,build/docker-digests/meow-node-matter-linux-arm64.json
+
+      - name: Merge meow-node-llm image manifest
+        if: ${{ needs.docker-plan.outputs.publish_llm == 'true' }}
+        shell: bash
+        run: bash scripts/release/docker/docker-publish-release-plan.sh build/docker-release-manifest.json --image meow-node-llm --merge-digest-files build/docker-digests/meow-node-llm-linux-amd64.json,build/docker-digests/meow-node-llm-linux-arm64.json
+
+      - name: Merge meow-node-storage image manifest
+        if: ${{ needs.docker-plan.outputs.publish_storage == 'true' }}
+        shell: bash
+        run: bash scripts/release/docker/docker-publish-release-plan.sh build/docker-release-manifest.json --image meow-node-storage --merge-digest-files build/docker-digests/meow-node-storage-linux-amd64.json,build/docker-digests/meow-node-storage-linux-arm64.json
+
+      - name: Print Docker release manifest
+        shell: bash
+        run: cat build/docker-release-manifest.json
+
+      - name: Upload Docker release manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-release-manifest
+          path: build/docker-release-manifest.json
+          overwrite: true
+
+  docker-publish-distribution:
+    needs:
+      - docker-plan
+      - docker-build-amd64
+      - docker-build-arm64
+      - docker-merge
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    environment: docker-release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DOCKER_DISTRIBUTION_BUCKET: ${{ vars.DOCKER_DISTRIBUTION_BUCKET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Download final Docker release manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-release-manifest
+          path: build
+      - name: Download frozen Docker release inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-release-plan
+          path: build/release-inputs
+      - name: Download linux/amd64 meowctl
+        uses: actions/download-artifact@v4
+        with:
+          name: meowctl-linux-amd64
+          path: build/meowctl/linux-amd64
+      - name: Download linux/arm64 meowctl
+        uses: actions/download-artifact@v4
+        with:
+          name: meowctl-linux-arm64
+          path: build/meowctl/linux-arm64
+      - name: Prepare Docker distribution assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y minisign
+          chmod 755 build/meowctl/linux-amd64/meowctl build/meowctl/linux-arm64/meowctl
+          version="${{ needs.docker-plan.outputs.version }}"
+          node scripts/release/docker/generate-meowctl-build-metadata.js \
+            --version "$version" \
+            --policy build/release-inputs/docker-catalog-signing-policy.json \
+            --verify build/release-inputs/meowctl-release-build-metadata.json
+          base="${DOCKER_DISTRIBUTION_BASE_URL%/}/docker/meowctl/${version}"
+          amd64_sha="$(sha256sum build/meowctl/linux-amd64/meowctl | awk '{print $1}')"
+          arm64_sha="$(sha256sum build/meowctl/linux-arm64/meowctl | awk '{print $1}')"
+          amd64_size="$(stat -c '%s' build/meowctl/linux-amd64/meowctl)"
+          arm64_size="$(stat -c '%s' build/meowctl/linux-arm64/meowctl)"
+          node -e '
+            const fs = require("fs");
+            const [version, base, amd64Sha, amd64Size, arm64Sha, arm64Size] = process.argv.slice(1);
+            const manifest = { version, assets: {
+              "linux-amd64": { url: `${base}/linux-amd64/meowctl`, sha256: amd64Sha, size: Number(amd64Size) },
+              "linux-arm64": { url: `${base}/linux-arm64/meowctl`, sha256: arm64Sha, size: Number(arm64Size) }
+            }};
+            fs.writeFileSync("build/meowctl/manifest.json", `${JSON.stringify(manifest, null, 2)}\n`);
+          ' "$version" "$base" "$amd64_sha" "$amd64_size" "$arm64_sha" "$arm64_size"
+          node scripts/release/docker/render-docker-install.js \
+            --template scripts/release/install-meow-docker.sh \
+            --manifest build/meowctl/manifest.json \
+            --output build/docker-install.sh
+          node scripts/release/docker/generate-docker-catalog.js \
+            --plan build/docker-release-manifest.json \
+            --source-provenance build/release-inputs/release-source-provenance.json \
+            --output build/docker-catalog.json
+          node scripts/release/docker/generate-docker-bootstrap.js \
+            --catalog build/docker-catalog.json \
+            --catalog-url "${DOCKER_DISTRIBUTION_BASE_URL%/}/docker/catalogs/${version}/catalog.json" \
+            --meowctl-manifest build/meowctl/manifest.json \
+            --source-provenance build/release-inputs/release-source-provenance.json \
+            --published-at "$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')" \
+            --output build/docker-bootstrap.json
+
+      - name: Sign Docker bootstrap and Catalog
+        shell: bash
+        env:
+          DOCKER_CATALOG_PRIMARY_PRIVATE_KEY_B64: ${{ secrets.DOCKER_CATALOG_PRIMARY_PRIVATE_KEY_B64 }}
+          DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64: ${{ secrets.DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64 }}
+        run: |
+          set -euo pipefail
+          version="${{ needs.docker-plan.outputs.version }}"
+          bash scripts/release/docker/sign-docker-catalog.sh \
+            --version "$version" \
+            --metadata build/docker-catalog.json \
+            --policy build/release-inputs/docker-catalog-signing-policy.json
+          bash scripts/release/docker/sign-docker-catalog.sh \
+            --version "$version" \
+            --metadata build/docker-bootstrap.json \
+            --policy build/release-inputs/docker-catalog-signing-policy.json
+
+      - name: Build signed metadata bundles and verify contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/release/docker/generate-docker-catalog-bundle.js \
+            --catalog build/docker-catalog.json \
+            --output build/docker-catalog.bundle.json
+          node scripts/release/docker/generate-docker-catalog-bundle.js \
+            --bootstrap build/docker-bootstrap.json \
+            --output build/docker-bootstrap.bundle.json
+          bash -n build/docker-install.sh
+          bash scripts/release/docker/docker-release-contract.test.sh
+
+      - name: Verify GHCR images are anonymously readable
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker_config="$(mktemp -d)"
+          trap 'rm -rf "$docker_config"' EXIT
+          export DOCKER_CONFIG="$docker_config"
+          while IFS= read -r ref; do
+            docker buildx imagetools inspect "$ref" >/dev/null || {
+              echo "::error::GHCR image is not anonymously readable: $ref"
+              exit 1
+            }
+          done < <(node -e '
+            const c=require("./build/docker-catalog.json");
+            for (const value of Object.values(c.components)) console.log(value.immutableRef);
+          ')
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Verify an ambiguous baseline against the S3 origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker=build/release-inputs/origin-absence-verification-required
+          if [ -f "$marker" ]; then
+            grep -Fx 'docker/stable returned an ambiguous 403 and must be checked at the S3 origin' "$marker" >/dev/null
+            stable_object_count="$(aws s3api list-objects-v2 \
+              --bucket "$DOCKER_DISTRIBUTION_BUCKET" \
+              --prefix docker/stable/ \
+              --max-keys 1 \
+              --query KeyCount \
+              --output text)"
+            [ "$stable_object_count" = 0 ] || {
+              echo "::error::CloudFront hid an existing stable Docker Catalog; refusing a baseline release"
+              exit 1
+            }
+          fi
+      - name: Publish immutable Docker distribution assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.docker-plan.outputs.version }}"
+          publish_immutable() {
+            local source="$1" key="$2" content_type="$3" existing error
+            existing="$(mktemp)"
+            error="$(mktemp)"
+            if aws s3api head-object --bucket "$DOCKER_DISTRIBUTION_BUCKET" --key "$key" >/dev/null 2>"$error"; then
+              aws s3 cp "s3://${DOCKER_DISTRIBUTION_BUCKET}/${key}" "$existing" --only-show-errors
+              cmp -s "$source" "$existing" || { echo "::error::Immutable object differs: $key"; exit 1; }
+              rm -f "$existing" "$error"
+              return
+            fi
+            grep -Eq '404|Not Found|NoSuchKey' "$error" || { cat "$error" >&2; exit 1; }
+            rm -f "$existing" "$error"
+            aws s3 cp "$source" "s3://${DOCKER_DISTRIBUTION_BUCKET}/${key}" \
+              --content-type "$content_type" \
+              --cache-control 'public,max-age=31536000,immutable'
+          }
+          prefix="docker/meowctl/${version}"
+          publish_immutable build/meowctl/linux-amd64/meowctl "$prefix/linux-amd64/meowctl" application/octet-stream
+          publish_immutable build/meowctl/linux-arm64/meowctl "$prefix/linux-arm64/meowctl" application/octet-stream
+          publish_immutable build/meowctl/manifest.json "$prefix/manifest.json" application/json
+          publish_immutable build/docker-catalog.json.minisig "docker/catalogs/${version}/catalog.json.minisig" application/octet-stream
+          for signature in build/docker-catalog.json.minisig.*; do
+            key_id="${signature##*.minisig.}"
+            publish_immutable "$signature" "docker/catalogs/${version}/catalog.json.minisig.${key_id}" application/octet-stream
+          done
+          publish_immutable build/docker-catalog.bundle.json "docker/catalogs/${version}/catalog.bundle.json" application/json
+          # Publish the discoverable Catalog last so no client can observe it
+          # before all of its verification objects exist.
+          publish_immutable build/docker-catalog.json "docker/catalogs/${version}/catalog.json" application/json
+          publish_immutable build/docker-install.sh "docker/versions/${version}/install.sh" 'text/x-shellscript; charset=utf-8'
+      - name: Verify immutable assets through install.mhome.ai
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${DOCKER_DISTRIBUTION_BASE_URL%/}"
+          version="${{ needs.docker-plan.outputs.version }}"
+          temporary="$(mktemp -d)"
+          trap 'rm -rf "$temporary"' EXIT
+          curl -fsSL --retry 5 "$base/docker/catalogs/${version}/catalog.json" -o "$temporary/catalog.json"
+          curl -fsSL --retry 5 "$base/docker/catalogs/${version}/catalog.json.minisig" \
+            -o "$temporary/catalog.json.minisig"
+          curl -fsSL --retry 5 "$base/docker/catalogs/${version}/catalog.bundle.json" \
+            -o "$temporary/catalog.bundle.json"
+          cmp -s build/docker-catalog.json "$temporary/catalog.json"
+          cmp -s build/docker-catalog.json.minisig "$temporary/catalog.json.minisig"
+          cmp -s build/docker-catalog.bundle.json "$temporary/catalog.bundle.json"
+          for signature in build/docker-catalog.json.minisig.*; do
+            key_id="${signature##*.minisig.}"
+            curl -fsSL --retry 5 "$base/docker/catalogs/${version}/catalog.json.minisig.${key_id}" \
+              -o "$temporary/catalog.json.minisig.${key_id}"
+            cmp -s "$signature" "$temporary/catalog.json.minisig.${key_id}"
+          done
+          curl -fsSL --retry 5 "$base/docker/meowctl/${version}/linux-amd64/meowctl" -o "$temporary/meowctl-amd64"
+          curl -fsSL --retry 5 "$base/docker/meowctl/${version}/linux-arm64/meowctl" -o "$temporary/meowctl-arm64"
+          curl -fsSL --retry 5 "$base/docker/versions/${version}/install.sh" -o "$temporary/install.sh"
+          cmp -s build/meowctl/linux-amd64/meowctl "$temporary/meowctl-amd64"
+          cmp -s build/meowctl/linux-arm64/meowctl "$temporary/meowctl-arm64"
+          cmp -s build/docker-install.sh "$temporary/install.sh"
+      - name: Promote stable Docker Catalog and bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws s3 cp build/docker-catalog.json.minisig "s3://${DOCKER_DISTRIBUTION_BUCKET}/docker/stable/catalog.json.minisig" \
+            --content-type application/octet-stream --cache-control 'no-cache,max-age=0'
+          for signature in build/docker-catalog.json.minisig.*; do
+            key_id="${signature##*.minisig.}"
+            aws s3 cp "$signature" "s3://${DOCKER_DISTRIBUTION_BUCKET}/docker/stable/catalog.json.minisig.${key_id}" \
+              --content-type application/octet-stream --cache-control 'no-cache,max-age=0'
+          done
+          aws s3 cp build/docker-catalog.json "s3://${DOCKER_DISTRIBUTION_BUCKET}/docker/stable/catalog.json" \
+            --content-type application/json --cache-control 'no-cache,max-age=0'
+          # Stable Catalog remains the release planner's signed baseline; the
+          # client version authority is promoted separately below.
+          aws s3 cp build/docker-catalog.bundle.json "s3://${DOCKER_DISTRIBUTION_BUCKET}/docker/stable/catalog.bundle.json" \
+            --content-type application/json --cache-control 'no-cache,max-age=0'
+          aws s3 cp build/docker-bootstrap.json.minisig "s3://${DOCKER_DISTRIBUTION_BUCKET}/docker/stable/bootstrap.json.minisig" \
+            --content-type application/octet-stream --cache-control 'no-cache,max-age=0'
+          for signature in build/docker-bootstrap.json.minisig.*; do
+            key_id="${signature##*.minisig.}"
+            aws s3 cp "$signature" "s3://${DOCKER_DISTRIBUTION_BUCKET}/docker/stable/bootstrap.json.minisig.${key_id}" \
+              --content-type application/octet-stream --cache-control 'no-cache,max-age=0'
+          done
+          # Promote the atomic bootstrap envelope last. It is the only stable
+          # entry point used by current meowctl clients.
+          aws s3 cp build/docker-bootstrap.bundle.json "s3://${DOCKER_DISTRIBUTION_BUCKET}/docker/stable/bootstrap.bundle.json" \
+            --content-type application/json --cache-control 'no-cache,max-age=0'
+          aws s3 cp build/docker-bootstrap.json "s3://${DOCKER_DISTRIBUTION_BUCKET}/docker/stable/bootstrap.json" \
+            --content-type application/json --cache-control 'no-cache,max-age=0'
+          aws s3 cp build/docker-install.sh "s3://${DOCKER_DISTRIBUTION_BUCKET}/docker/install.sh" \
+            --content-type 'text/x-shellscript; charset=utf-8' --cache-control 'no-cache,max-age=0'
+      - name: Verify promoted stable assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${DOCKER_DISTRIBUTION_BASE_URL%/}"
+          temporary="$(mktemp -d)"
+          trap 'rm -rf "$temporary"' EXIT
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            curl -fsSL "$base/docker/stable/catalog.json" -o "$temporary/catalog.json" || true
+            curl -fsSL "$base/docker/stable/catalog.bundle.json" -o "$temporary/catalog.bundle.json" || true
+            curl -fsSL "$base/docker/stable/bootstrap.json" -o "$temporary/bootstrap.json" || true
+            curl -fsSL "$base/docker/stable/bootstrap.bundle.json" -o "$temporary/bootstrap.bundle.json" || true
+            curl -fsSL "$base/docker/install.sh" -o "$temporary/install.sh" || true
+            curl -fsSL "$base/docker/stable/catalog.json.minisig" \
+              -o "$temporary/catalog.json.minisig" || true
+            signatures_match=true
+            for signature in build/docker-catalog.json.minisig.*; do
+              key_id="${signature##*.minisig.}"
+              curl -fsSL "$base/docker/stable/catalog.json.minisig.${key_id}" \
+                -o "$temporary/catalog.json.minisig.${key_id}" || true
+              cmp -s "$signature" "$temporary/catalog.json.minisig.${key_id}" || signatures_match=false
+            done
+            if [ "$signatures_match" = true ] \
+              && cmp -s build/docker-catalog.json "$temporary/catalog.json" \
+              && cmp -s build/docker-catalog.bundle.json "$temporary/catalog.bundle.json" \
+              && cmp -s build/docker-bootstrap.json "$temporary/bootstrap.json" \
+              && cmp -s build/docker-bootstrap.bundle.json "$temporary/bootstrap.bundle.json" \
+              && cmp -s build/docker-catalog.json.minisig "$temporary/catalog.json.minisig" \
+              && cmp -s build/docker-install.sh "$temporary/install.sh"; then
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::Stable Docker distribution did not converge through CloudFront"
+          exit 1

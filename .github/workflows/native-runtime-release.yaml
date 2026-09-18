@@ -1,0 +1,65 @@
+name: Release native runtime
+
+on:
+  push:
+    tags:
+      - "n*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Runtime version (must match baycat vX.Y.Z)"
+        required: true
+        type: string
+      platform:
+        description: "Platform to build and publish"
+        type: choice
+        options: [all, macos, linux-arm64, linux-amd64, windows]
+        default: all
+      initialize_catalog:
+        description: "Explicitly initialize a missing platform Stable Catalog"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.scope.outputs.version }}
+      platforms: ${{ steps.scope.outputs.platforms }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - id: scope
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PLATFORM: ${{ inputs.platform }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            node scripts/ci/resolve-product-tag.js \
+              --event push --channel native --ref "${GITHUB_REF_NAME}"
+          else
+            node scripts/ci/resolve-product-tag.js \
+              --event workflow_dispatch \
+              --channel native \
+              --version "$INPUT_VERSION" \
+              --platform "$INPUT_PLATFORM"
+          fi >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: scope
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON(needs.scope.outputs.platforms) }}
+    uses: ./.github/workflows/native-runtime-platform-release.yaml
+    with:
+      version: ${{ needs.scope.outputs.version }}
+      platform: ${{ matrix.platform }}
+      initialize_catalog: ${{ inputs.initialize_catalog || false }}
+    secrets: inherit

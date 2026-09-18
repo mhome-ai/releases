@@ -1,0 +1,91 @@
+name: Deploy Native Install Script
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Product version whose baycat vX.Y.Z supplies the installer"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-native-installer:
+    runs-on: [self-hosted, Linux]
+    env:
+      INSTALL_SCRIPT_BUCKET: ${{ vars.NATIVE_INSTALL_SCRIPT_BUCKET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: ./.github/actions/prepare-mhome-sources
+        id: release_sources
+        with:
+          version: ${{ inputs.version }}
+          with_meowcore: "false"
+          source_token: ${{ secrets.GPR_TOKEN_OVERRIDE || secrets.GPR_TOKEN }}
+      - name: Render and validate native install script
+        shell: bash
+        working-directory: ${{ steps.release_sources.outputs.baycat_dir }}
+        run: |
+          set -euo pipefail
+          [ -n "$INSTALL_SCRIPT_BUCKET" ] || { echo "::error::Missing NATIVE_INSTALL_SCRIPT_BUCKET"; exit 1; }
+          node scripts/release/native/render-install-meow.js \
+            --template scripts/release/install-meow.sh \
+            --output "$GITHUB_WORKSPACE/build/install-scripts/meow.sh"
+          node scripts/release/native/render-install-meow-windows.js \
+            "$GITHUB_WORKSPACE/build/install-scripts/meow.ps1"
+          bash -n "$GITHUB_WORKSPACE/build/install-scripts/meow.sh"
+      - name: Require native publish role
+        if: ${{ vars.NATIVE_INSTALL_PUBLISH_ROLE_ARN == '' }}
+        run: |
+          echo "::error::Missing NATIVE_INSTALL_PUBLISH_ROLE_ARN"
+          exit 1
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.NATIVE_INSTALL_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Publish native install script
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.release_sources.outputs.baycat_revision }}
+        run: |
+          set -euo pipefail
+          prefix="s3://${INSTALL_SCRIPT_BUCKET}/install"
+          key="install/versioned/${SOURCE_SHA}/meow.sh"
+          existing="$(mktemp)"
+          error="$(mktemp)"
+          if aws s3api head-object --bucket "$INSTALL_SCRIPT_BUCKET" --key "$key" >/dev/null 2>"$error"; then
+            aws s3 cp "s3://${INSTALL_SCRIPT_BUCKET}/${key}" "$existing" --only-show-errors
+            cmp -s "$GITHUB_WORKSPACE/build/install-scripts/meow.sh" "$existing" || {
+              echo "::error::Refusing to overwrite immutable native installer ${key}"
+              exit 1
+            }
+          else
+            grep -Eq '404|Not Found|NoSuchKey' "$error" || { cat "$error" >&2; exit 1; }
+            aws s3 cp "$GITHUB_WORKSPACE/build/install-scripts/meow.sh" "$prefix/versioned/${SOURCE_SHA}/meow.sh" \
+              --content-type "text/x-shellscript; charset=utf-8" \
+              --cache-control "public,max-age=31536000,immutable"
+          fi
+          aws s3 cp "$GITHUB_WORKSPACE/build/install-scripts/meow.sh" "$prefix/stable/meow.sh" \
+            --content-type "text/x-shellscript; charset=utf-8" \
+            --cache-control "no-cache,max-age=0"
+          key="install/versioned/${SOURCE_SHA}/meow.ps1"
+          if aws s3api head-object --bucket "$INSTALL_SCRIPT_BUCKET" --key "$key" >/dev/null 2>"$error"; then
+            aws s3 cp "s3://${INSTALL_SCRIPT_BUCKET}/${key}" "$existing" --only-show-errors
+            cmp -s "$GITHUB_WORKSPACE/build/install-scripts/meow.ps1" "$existing" || { echo "::error::Immutable Windows installer differs"; exit 1; }
+          else
+            grep -Eq '404|Not Found|NoSuchKey' "$error" || { cat "$error" >&2; exit 1; }
+            aws s3 cp "$GITHUB_WORKSPACE/build/install-scripts/meow.ps1" "$prefix/versioned/${SOURCE_SHA}/meow.ps1" \
+              --content-type "text/plain; charset=utf-8" --cache-control "public,max-age=31536000,immutable"
+          fi
+          aws s3 cp "$GITHUB_WORKSPACE/build/install-scripts/meow.ps1" "$prefix/stable/meow.ps1" \
+            --content-type "text/plain; charset=utf-8" --cache-control "no-cache,max-age=0"
+      - uses: ./.github/actions/cleanup-mhome-sources
+        if: always()
+        with:
+          source_root: ${{ steps.release_sources.outputs.source_root }}

@@ -24,6 +24,7 @@ services:
       - rustup-home:/home/runner/.rustup
       - cargo-target:/home/runner/.cache/cargo-target
       - download-cache:/home/runner/.cache/mhome-downloads
+      - mhome-src:/home/runner/.mhome
       - runner-software:/home/runner/actions-runner
       - runner-work:/home/runner/_work
 
@@ -32,5 +33,6 @@ volumes:
   rustup-home:
   cargo-target:
   download-cache:
+  mhome-src:
   runner-software:
   runner-work:

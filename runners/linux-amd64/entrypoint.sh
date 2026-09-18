@@ -22,10 +22,10 @@ fi
 
 # Named volumes are created as root; make them writable for uid 1001.
 sudo mkdir -p "$CARGO_HOME" "$RUSTUP_HOME" "$CARGO_TARGET_DIR" \
-  "$MHOME_DOWNLOAD_CACHE_ROOT" "$HOME/actions-runner" "$HOME/_work"
+  "$MHOME_DOWNLOAD_CACHE_ROOT" "$HOME/.mhome" "$HOME/actions-runner" "$HOME/_work"
 sudo chown -R runner:runner "$CARGO_HOME" "$RUSTUP_HOME" \
   "$(dirname "$CARGO_TARGET_DIR")" "$MHOME_DOWNLOAD_CACHE_ROOT" \
-  "$HOME/actions-runner" "$HOME/_work"
+  "$HOME/.mhome" "$HOME/actions-runner" "$HOME/_work"
 
 if ! command -v rustc >/dev/null 2>&1; then
   echo "Installing Rust toolchain into persistent volumes..."
