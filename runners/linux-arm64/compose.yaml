@@ -16,12 +16,16 @@ services:
     restart: unless-stopped
     environment:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+    group_add:
+      - ${DOCKER_GID:-0}
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
       - cargo-home:/home/runner/.cargo
       - rustup-home:/home/runner/.rustup
       - cargo-target:/home/runner/.cache/cargo-target
       - download-cache:/home/runner/.cache/mhome-downloads
       - mhome-src:/home/runner/.mhome
+      - runner-ssh:/home/runner/.ssh
       - runner-software:/home/runner/actions-runner
       - runner-work:/home/runner/_work
 
@@ -31,5 +35,6 @@ volumes:
   cargo-target:
   download-cache:
   mhome-src:
+  runner-ssh:
   runner-software:
   runner-work:

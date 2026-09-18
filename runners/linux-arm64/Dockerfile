@@ -16,6 +16,9 @@ RUN apt-get update \
         file \
         git \
         jq \
+        libarchive-tools \
+        minisign \
+        openssh-client \
         libayatana-appindicator3-dev \
         libdbus-1-dev \
         libglib2.0-dev \
@@ -55,6 +58,18 @@ RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_$
     && tar -xzf /tmp/gh.tar.gz -C /tmp \
     && mv "/tmp/gh_${GH_VERSION}_linux_arm64/bin/gh" /usr/local/bin/gh \
     && rm -rf /tmp/gh.tar.gz "/tmp/gh_${GH_VERSION}_linux_arm64"
+
+ARG DOCKER_VERSION=27.5.1
+RUN curl -fsSL "https://download.docker.com/linux/static/stable/aarch64/docker-${DOCKER_VERSION}.tgz" \
+      -o /tmp/docker.tgz \
+    && tar -xzf /tmp/docker.tgz -C /tmp \
+    && mv /tmp/docker/docker /usr/local/bin/docker \
+    && rm -rf /tmp/docker /tmp/docker.tgz
+
+RUN curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o /tmp/awscliv2.zip \
+    && unzip -q /tmp/awscliv2.zip -d /tmp \
+    && /tmp/aws/install \
+    && rm -rf /tmp/aws /tmp/awscliv2.zip
 
 RUN useradd --create-home --uid 1001 --shell /bin/bash runner \
     && echo 'runner ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/runner \

@@ -34,7 +34,7 @@ function cleanupReleaseSources(sourceRoot, home = os.homedir()) {
   }
   if (!fs.existsSync(resolved)) return;
 
-  const names = ["baycat", "meowcore-rust", "pallas-cat"];
+  const names = ["baycat", "meowcore-rust", "pallas-cat", "releases"];
   for (const name of names) {
     const worktree = path.join(resolved, name);
     if (!fs.existsSync(worktree)) continue;

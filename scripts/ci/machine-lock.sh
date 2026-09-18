@@ -69,6 +69,13 @@ release_lock() {
   if [ ! -d "$LOCK_DIR" ]; then
     return
   fi
+  if [ -f "$OWNER_FILE" ] && [ -n "${GITHUB_RUN_ID:-}" ]; then
+    owner_run="$(awk '{print $1}' "$OWNER_FILE")"
+    if [ "$owner_run" != "$GITHUB_RUN_ID" ]; then
+      echo "not releasing $LOCK_DIR owned by ${owner_run:-unknown}"
+      return
+    fi
+  fi
   rm -rf "$LOCK_DIR"
   echo "released $LOCK_DIR"
 }

@@ -8,7 +8,6 @@ const NATIVE_PREFIXES = {
   nlx: "linux-amd64",
   nm: "macos",
   nw: "windows",
-  n: "all",
 };
 
 const DESKTOP_PREFIXES = {
@@ -24,7 +23,7 @@ function stripRef(ref) {
 
 function resolveProductTag(ref) {
   const tag = stripRef(ref);
-  const native = /^(nlr|nlx|nm|nw|n)(\d+\.\d+\.\d+)$/.exec(tag);
+  const native = /^(nlr|nlx|nm|nw)(\d+\.\d+\.\d+)$/.exec(tag);
   if (native) {
     const version = native[2];
     return {
@@ -77,10 +76,7 @@ function resolveNativeDispatch({ event, ref, version, platform }) {
     }
     return {
       version: resolved.version,
-      platforms:
-        resolved.platform === "all"
-          ? ["macos", "linux-arm64", "linux-amd64", "windows"]
-          : [resolved.platform],
+      platforms: [resolved.platform],
     };
   }
   if (event !== "workflow_dispatch") {

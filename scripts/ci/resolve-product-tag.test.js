@@ -21,7 +21,6 @@ test("parses independent native platform tags", () => {
   assert.equal(resolveProductTag("refs/tags/nlx0.9.27").platform, "linux-amd64");
   assert.equal(resolveProductTag("nm1.0.0").platform, "macos");
   assert.equal(resolveProductTag("nw1.0.0").platform, "windows");
-  assert.equal(resolveProductTag("n1.0.0").platform, "all");
 });
 
 test("parses desktop tags onto canonical aX.Y.Z GitHub release", () => {
@@ -44,6 +43,7 @@ test("does not let n steal nlr or a steal am", () => {
 test("rejects unknown tags", () => {
   assert.throws(() => resolveProductTag("v1.2.3"), /Invalid product release tag/);
   assert.throws(() => resolveProductTag("nl1.2.3"), /Invalid product release tag/);
+  assert.throws(() => resolveProductTag("n1.2.3"), /Invalid product release tag/);
 });
 
 test("native dispatch from tag does not read package.json", () => {

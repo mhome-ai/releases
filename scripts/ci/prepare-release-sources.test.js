@@ -18,7 +18,7 @@ function write(file, content) {
   fs.writeFileSync(file, content);
 }
 
-function createOrigin(t, { name, branch, tag, files }) {
+function createOrigin(t, { name, branch, tag, files, lightweightTag }) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `mhome-origin-${name}-`));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const seed = path.join(root, "seed");
@@ -32,9 +32,17 @@ function createOrigin(t, { name, branch, tag, files }) {
   }
   git(seed, "add", ".");
   git(seed, "commit", "-qm", "initial");
-  if (tag) git(seed, "tag", "-a", tag, "-m", tag);
+  if (tag && lightweightTag) git(seed, "tag", tag);
+  else if (tag) git(seed, "tag", "-a", tag, "-m", tag);
   execFileSync("git", ["clone", "--bare", "-q", seed, bare]);
   return { bare, commit: git(seed, "rev-parse", "HEAD") };
+}
+
+function provisionClone(home, name, origin, branch) {
+  const dest = path.join(home, ".mhome", name);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  execFileSync("git", ["clone", "--branch", branch, "-q", origin.bare, dest]);
+  return dest;
 }
 
 test("prepares sibling worktrees from product tags and leaves HEAD clones alone", (t) => {
@@ -54,43 +62,33 @@ test("prepares sibling worktrees from product tags and leaves HEAD clones alone"
     tag: "v1.2.3",
     files: {
       "package.json": '{"version":"1.2.3"}\n',
-      "release/sources/dependencies.json": JSON.stringify({
-        schemaVersion: 1,
-        sources: {
-          meowcoreRust: {
-            repository: "mhome-ai/meowcore-rust",
-            version: "1.0.12",
-            commit: meowcore.commit,
+      "release/sources/dependencies.json": `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          sources: {
+            meowcoreRust: {
+              repository: "mhome-ai/meowcore-rust",
+              version: "1.0.12",
+              commit: meowcore.commit,
+            },
           },
         },
-      }, null, 2) + "\n",
-      "scripts/ci/ci-verify-release-sources.sh":
-        "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+        null,
+        2
+      )}\n`,
     },
   });
-  const origins = {
-    baycat: baycat.bare,
-    "meowcore-rust": meowcore.bare,
-  };
+  provisionClone(home, "baycat", baycat, "master");
+  provisionClone(home, "meowcore-rust", meowcore, "main");
   const result = prepareReleaseSources({
     version: "1.2.3",
     workId: "nlr-test",
     withMeowcore: true,
     home,
-    cloneUrlFor: (entry) => origins[entry.name],
   });
-  assert.equal(
-    git(result.baycat_dir, "rev-parse", "HEAD"),
-    baycat.commit
-  );
-  assert.equal(
-    git(result.meowcore_dir, "rev-parse", "HEAD"),
-    meowcore.commit
-  );
-  assert.equal(
-    path.basename(path.dirname(result.meowcore_dir)),
-    "nlr-test"
-  );
+  assert.equal(git(result.baycat_dir, "rev-parse", "HEAD"), baycat.commit);
+  assert.equal(git(result.meowcore_dir, "rev-parse", "HEAD"), meowcore.commit);
+  assert.equal(path.basename(path.dirname(result.meowcore_dir)), "nlr-test");
   assert.equal(
     git(path.join(home, ".mhome/baycat"), "branch", "--show-current"),
     "master"
@@ -100,13 +98,30 @@ test("prepares sibling worktrees from product tags and leaves HEAD clones alone"
     "main"
   );
   assert.ok(
-    fs.existsSync(path.join(result.baycat_dir, "build/release-source-provenance.json"))
+    fs.existsSync(
+      path.join(result.baycat_dir, "build/release-source-provenance.json")
+    )
   );
   cleanupReleaseSources(result.source_root, home);
   assert.equal(fs.existsSync(result.source_root), false);
   assert.equal(
     git(path.join(home, ".mhome/baycat"), "branch", "--show-current"),
     "master"
+  );
+});
+
+test("fails when the runner was not provisioned with a clone", (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "mhome-home-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  assert.throws(
+    () =>
+      prepareReleaseSources({
+        version: "1.2.3",
+        workId: "missing-clone",
+        withMeowcore: false,
+        home,
+      }),
+    /provision ~\/\.mhome\/baycat/
   );
 });
 
@@ -118,6 +133,7 @@ test("fails when the product source tag is missing", (t) => {
     branch: "master",
     files: { "package.json": '{"version":"1.2.3"}\n' },
   });
+  provisionClone(home, "baycat", baycat, "master");
   assert.throws(
     () =>
       prepareReleaseSources({
@@ -125,8 +141,30 @@ test("fails when the product source tag is missing", (t) => {
         workId: "missing-tag",
         withMeowcore: false,
         home,
-        cloneUrlFor: () => baycat.bare,
       }),
-    /refs\/tags\/v1\.2\.3/
+    /remote tag v1\.2\.3 not found/
+  );
+});
+
+test("rejects a lightweight product tag", (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "mhome-home-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const baycat = createOrigin(t, {
+    name: "baycat",
+    branch: "master",
+    tag: "v1.2.3",
+    lightweightTag: true,
+    files: { "package.json": '{"version":"1.2.3"}\n' },
+  });
+  provisionClone(home, "baycat", baycat, "master");
+  assert.throws(
+    () =>
+      prepareReleaseSources({
+        version: "1.2.3",
+        workId: "light-tag",
+        withMeowcore: false,
+        home,
+      }),
+    /must be annotated/
   );
 });

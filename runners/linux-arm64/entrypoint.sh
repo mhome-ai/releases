@@ -11,10 +11,16 @@ export HOME CARGO_HOME RUSTUP_HOME CARGO_TARGET_DIR MHOME_DOWNLOAD_CACHE_ROOT PA
 
 # Named volumes are created as root; make them writable for uid 1001.
 sudo mkdir -p "$CARGO_HOME" "$RUSTUP_HOME" "$CARGO_TARGET_DIR" \
-  "$MHOME_DOWNLOAD_CACHE_ROOT" "$HOME/.mhome" "$HOME/actions-runner" "$HOME/_work"
+  "$MHOME_DOWNLOAD_CACHE_ROOT" "$HOME/.mhome" "$HOME/.ssh" "$HOME/actions-runner" "$HOME/_work"
 sudo chown -R runner:runner "$CARGO_HOME" "$RUSTUP_HOME" \
   "$(dirname "$CARGO_TARGET_DIR")" "$MHOME_DOWNLOAD_CACHE_ROOT" \
-  "$HOME/.mhome" "$HOME/actions-runner" "$HOME/_work"
+  "$HOME/.mhome" "$HOME/.ssh" "$HOME/actions-runner" "$HOME/_work"
+chmod 700 "$HOME/.ssh"
+touch "$HOME/.ssh/known_hosts"
+chmod 600 "$HOME/.ssh/known_hosts"
+if ! grep -q github.com "$HOME/.ssh/known_hosts"; then
+  ssh-keyscan -t ed25519 github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
+fi
 
 if ! command -v rustc >/dev/null 2>&1; then
   echo "Installing Rust toolchain into persistent volumes..."

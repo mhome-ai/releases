@@ -17,10 +17,10 @@ function fail(message) {
   throw new Error(message);
 }
 
-function git(repoDir, args, env = process.env) {
+function git(repoDir, args) {
   const result = spawnSync("git", repoDir ? ["-C", repoDir, ...args] : args, {
     encoding: "utf8",
-    env: { ...env, GIT_TERMINAL_PROMPT: "0" },
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (result.error) throw result.error;
@@ -37,47 +37,15 @@ function githubRepoFromRemoteUrl(url) {
   const trimmed = String(url || "").trim().replace(/\.git$/, "").replace(/\/$/, "");
   const ssh = /^git@github\.com:(.+)$/.exec(trimmed);
   if (ssh) return ssh[1];
-  const https = /^https:\/\/(?:x-access-token:[^@]+@)?github\.com\/(.+)$/.exec(
-    trimmed
-  );
-  if (https) return https[1];
-  return null;
+  const https = /^https:\/\/github\.com\/(.+)$/.exec(trimmed);
+  return https ? https[1] : null;
 }
 
-function defaultCloneUrl(repository, token) {
-  if (token) return `https://x-access-token:${token}@github.com/${repository}.git`;
-  return `git@github.com:${repository}.git`;
-}
-
-function gitEnv(token) {
-  if (!token) return process.env;
-  return {
-    ...process.env,
-    GIT_TERMINAL_PROMPT: "0",
-    GIT_CONFIG_COUNT: "1",
-    GIT_CONFIG_KEY_0: "http.extraHeader",
-    GIT_CONFIG_VALUE_0: `AUTHORIZATION: bearer ${token}`,
-  };
-}
-
-function ensureClone(entry, repoDir, { token, cloneUrlFor }) {
-  const cloneUrl = cloneUrlFor
-    ? cloneUrlFor(entry)
-    : defaultCloneUrl(entry.repository, token);
-  if (!fs.existsSync(repoDir)) {
-    fs.mkdirSync(path.dirname(repoDir), { recursive: true });
-    git(null, ["clone", "--branch", entry.defaultBranch, cloneUrl, repoDir]);
-    const origin = git(repoDir, ["remote", "get-url", "origin"]);
-    const sanitized = origin.replace(
-      /https:\/\/x-access-token:[^@]+@github\.com/i,
-      "https://github.com"
+function requireExistingClone(entry, repoDir) {
+  if (!fs.existsSync(repoDir) || !fs.existsSync(path.join(repoDir, ".git"))) {
+    fail(
+      `runner is missing ${repoDir}; provision ~/.mhome/${entry.name} on this machine`
     );
-    if (sanitized !== origin) {
-      git(repoDir, ["remote", "set-url", "origin", sanitized]);
-    }
-  }
-  if (!fs.existsSync(path.join(repoDir, ".git"))) {
-    fail(`source ${entry.name} exists at ${repoDir} but is not a git checkout`);
   }
   const origin = git(repoDir, ["remote", "get-url", "origin"]);
   const actual = githubRepoFromRemoteUrl(origin);
@@ -88,21 +56,8 @@ function ensureClone(entry, repoDir, { token, cloneUrlFor }) {
   }
 }
 
-function fetchTag(repoDir, tag, token) {
-  const env = gitEnv(token);
-  git(repoDir, ["fetch", "--prune", "origin"], env);
-  git(
-    repoDir,
-    ["fetch", "origin", `refs/tags/${tag}:refs/tags/${tag}`],
-    env
-  );
-  const local = git(repoDir, ["rev-parse", `${tag}^{commit}`]);
-  const remoteLines = git(
-    repoDir,
-    ["ls-remote", "origin", `refs/tags/${tag}`, `refs/tags/${tag}^{}`],
-    env
-  );
-  const remoteRefs = remoteLines
+function parseLsRemote(output) {
+  return String(output || "")
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
@@ -110,26 +65,35 @@ function fetchTag(repoDir, tag, token) {
       const [sha, ref] = line.split(/[\t ]+/);
       return { sha, ref };
     });
+}
+
+function fetchTag(repoDir, tag) {
+  const remoteLines = git(repoDir, [
+    "ls-remote",
+    "origin",
+    `refs/tags/${tag}`,
+    `refs/tags/${tag}^{}`,
+    `refs/heads/${tag}`,
+  ]);
+  const remoteRefs = parseLsRemote(remoteLines);
+  if (remoteRefs.some((entry) => entry.ref === `refs/heads/${tag}`)) {
+    fail(`ref ${tag} is a branch on origin; product sources must be tags`);
+  }
   const peeled = remoteRefs.find((entry) => entry.ref?.endsWith("^{}"));
   const tagged = remoteRefs.find((entry) => entry.ref === `refs/tags/${tag}`);
-  if (!peeled && !tagged) {
+  if (!tagged) {
     fail(`remote tag ${tag} not found in ${repoDir}`);
   }
-  const remoteCommit = peeled
-    ? peeled.sha
-    : git(repoDir, ["rev-parse", `${tagged.sha}^{commit}`], env);
-  if (local !== remoteCommit) {
-    fail(
-      `tag ${tag} local commit ${local} does not match origin ${remoteCommit}`
-    );
+  if (!peeled) {
+    fail(`tag ${tag} must be annotated, not a lightweight tag`);
   }
-  const branch = spawnSync(
-    "git",
-    ["-C", repoDir, "show-ref", "--verify", "--quiet", `refs/heads/${tag}`],
-    { stdio: "ignore" }
-  );
-  if (branch.status === 0) {
-    fail(`ref ${tag} is a branch; product sources must be tags`);
+  git(repoDir, ["fetch", "--prune", "origin"]);
+  git(repoDir, ["fetch", "origin", `refs/tags/${tag}:refs/tags/${tag}`]);
+  const local = git(repoDir, ["rev-parse", `${tag}^{commit}`]);
+  if (local !== peeled.sha) {
+    fail(
+      `tag ${tag} local commit ${local} does not match origin ${peeled.sha}`
+    );
   }
   return local;
 }
@@ -162,34 +126,61 @@ function readMeowcorePin(baycatDir) {
   };
 }
 
-function verifySources({
+function requireCleanWorktree(name, directory) {
+  if (!fs.existsSync(path.join(directory, ".git"))) {
+    fail(`${name} is not a Git checkout: ${directory}`);
+  }
+  const status = git(directory, [
+    "status",
+    "--porcelain=v1",
+    "--untracked-files=all",
+  ]);
+  if (status) {
+    fail(`${name} has tracked, staged, or untracked changes: ${directory}`);
+  }
+}
+
+function verifyProductPins({
   version,
   baycatDir,
   pallasDir,
   meowcoreDir,
   baycatVersionMode = "match",
 }) {
-  const script = path.join(baycatDir, "scripts/ci/ci-verify-release-sources.sh");
-  const args = [
-    "--version",
-    version,
-    "--baycat",
-    baycatDir,
-    "--baycat-ref",
-    productSourceTag(version),
-    "--baycat-version-mode",
-    baycatVersionMode,
-  ];
-  if (pallasDir) args.push("--pallas", pallasDir);
-  if (meowcoreDir) args.push("--meowcore", meowcoreDir);
-  const result = spawnSync("bash", [script, ...args], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (result.status !== 0) {
-    fail(
-      `ci-verify-release-sources.sh failed: ${(result.stderr || result.stdout || "").trim()}`
+  requireCleanWorktree("baycat", baycatDir);
+  if (baycatVersionMode === "match") {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(baycatDir, "package.json"), "utf8")
     );
+    if (pkg.version !== version) {
+      fail(
+        `baycat package.json version ${pkg.version} does not match ${version}`
+      );
+    }
+  }
+  const sourceTag = productSourceTag(version);
+  const baycatHead = git(baycatDir, ["rev-parse", "HEAD"]);
+  const baycatTag = git(baycatDir, ["rev-parse", `${sourceTag}^{commit}`]);
+  if (baycatHead !== baycatTag) {
+    fail(`baycat HEAD ${baycatHead} is not tag ${sourceTag}`);
+  }
+  if (pallasDir) {
+    requireCleanWorktree("pallas-cat", pallasDir);
+    const head = git(pallasDir, ["rev-parse", "HEAD"]);
+    const tagged = git(pallasDir, ["rev-parse", `${sourceTag}^{commit}`]);
+    if (head !== tagged) {
+      fail(`pallas-cat HEAD ${head} is not tag ${sourceTag}`);
+    }
+  }
+  if (meowcoreDir) {
+    requireCleanWorktree("meowcore-rust", meowcoreDir);
+    const pin = readMeowcorePin(baycatDir);
+    const head = git(meowcoreDir, ["rev-parse", "HEAD"]);
+    if (head !== pin.commit) {
+      fail(
+        `meowcore-rust HEAD ${head} does not match dependencies.json ${pin.commit}`
+      );
+    }
   }
 }
 
@@ -245,10 +236,10 @@ function prepareReleaseSources({
   withMeowcore = true,
   withPallas = false,
   baycatVersionMode = "match",
-  token = process.env.RELEASE_SOURCE_TOKEN || "",
   home = os.homedir(),
-  cloneUrlFor,
-  workflowRunUrl = process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID
+  workflowRunUrl = process.env.GITHUB_SERVER_URL &&
+    process.env.GITHUB_REPOSITORY &&
+    process.env.GITHUB_RUN_ID
     ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
     : "",
   runAttempt = process.env.GITHUB_RUN_ATTEMPT || "",
@@ -262,23 +253,20 @@ function prepareReleaseSources({
   const meowcoreDir = withMeowcore ? path.join(workRoot, "meowcore-rust") : "";
   const pallasDir = withPallas ? path.join(workRoot, "pallas-cat") : "";
 
-  ensureClone(PRODUCT_REPOS.baycat, baycatClone, { token, cloneUrlFor });
-  fetchTag(baycatClone, sourceTag, token);
+  requireExistingClone(PRODUCT_REPOS.baycat, baycatClone);
+  fetchTag(baycatClone, sourceTag);
   addDetachedWorktree(baycatClone, baycatDir, sourceTag);
 
   if (withPallas) {
-    ensureClone(PRODUCT_REPOS["pallas-cat"], pallasClone, { token, cloneUrlFor });
-    fetchTag(pallasClone, sourceTag, token);
+    requireExistingClone(PRODUCT_REPOS["pallas-cat"], pallasClone);
+    fetchTag(pallasClone, sourceTag);
     addDetachedWorktree(pallasClone, pallasDir, sourceTag);
   }
 
   if (withMeowcore) {
     const pin = readMeowcorePin(baycatDir);
-    ensureClone(PRODUCT_REPOS["meowcore-rust"], meowcoreClone, {
-      token,
-      cloneUrlFor,
-    });
-    const meowcoreCommit = fetchTag(meowcoreClone, pin.tag, token);
+    requireExistingClone(PRODUCT_REPOS["meowcore-rust"], meowcoreClone);
+    const meowcoreCommit = fetchTag(meowcoreClone, pin.tag);
     if (meowcoreCommit !== pin.commit) {
       fail(
         `meowcore-rust ${pin.tag} is ${meowcoreCommit}, dependencies.json requires ${pin.commit}`
@@ -287,7 +275,7 @@ function prepareReleaseSources({
     addDetachedWorktree(meowcoreClone, meowcoreDir, pin.tag);
   }
 
-  verifySources({
+  verifyProductPins({
     version,
     baycatDir,
     pallasDir: pallasDir || undefined,
@@ -362,8 +350,8 @@ if (require.main === module) {
 }
 
 module.exports = {
-  defaultCloneUrl,
   fetchTag,
   prepareReleaseSources,
   readMeowcorePin,
+  requireExistingClone,
 };

@@ -9,7 +9,12 @@ into this public `mhome-ai/releases` bucket.
 | `linux-amd64/` | `meow-linux-amd64-runner` | `Linux,AMD64,release-linux-amd64` | amd64 Docker. On Apple Silicon this is Rosetta userspace, not QEMU |
 
 Both can stay up on the same Apple Silicon Docker host. They use different
-compose projects, labels, and named volumes.
+compose projects, labels, and named volumes. Each container mounts the host
+Docker socket and a persistent `~/.ssh` volume for GitHub deploy keys. Put the
+key in that volume before the first fetch; workflows do not clone and do not
+carry GitHub tokens for private sources.
+
+This is only source. `docker compose` identity is the `name:` in each
 
 This is only source. `docker compose` identity is the `name:` in each
 `compose.yaml`. Already-running containers and their volumes stay put when

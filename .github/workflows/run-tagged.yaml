@@ -1,0 +1,86 @@
+name: Run tagged orchestrator
+
+on:
+  workflow_call:
+    inputs:
+      runner_labels:
+        required: true
+        type: string
+      channel:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+      extra:
+        required: false
+        type: string
+        default: ""
+      initialize_catalog:
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      artifact_dir:
+        value: ${{ jobs.run.outputs.artifact_dir }}
+      version:
+        value: ${{ jobs.run.outputs.version }}
+
+jobs:
+  run:
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 480
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
+    outputs:
+      artifact_dir: ${{ steps.release.outputs.artifact_dir }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Fetch tagged orchestrator and run
+        id: release
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          RELEASE_EXTRA: ${{ inputs.extra }}
+          INITIALIZE_CATALOG: ${{ inputs.initialize_catalog }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUNTIME_CATALOG_PRIVATE_KEY_B64: ${{ secrets.RUNTIME_CATALOG_PRIVATE_KEY_B64 }}
+          RUNTIME_CATALOG_BUCKET: ${{ secrets.RUNTIME_CATALOG_BUCKET }}
+          RUNTIME_PUBLISH_ROLE_ARN: ${{ vars.RUNTIME_PUBLISH_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+          APPLE_CSC_LINK: ${{ secrets.APPLE_CSC_LINK }}
+          APPLE_CSC_KEY_PASSWORD: ${{ secrets.APPLE_CSC_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SSL_COM_USERNAME: ${{ secrets.SSL_COM_USERNAME }}
+          SSL_COM_PASSWORD: ${{ secrets.SSL_COM_PASSWORD }}
+          SSL_COM_CREDENTIAL_ID: ${{ secrets.SSL_COM_CREDENTIAL_ID }}
+          SSL_COM_TOTP_SECRET: ${{ secrets.SSL_COM_TOTP_SECRET }}
+          DOCKER_DISTRIBUTION_BASE_URL: ${{ vars.DOCKER_DISTRIBUTION_BASE_URL }}
+          DOCKER_DISTRIBUTION_BUCKET: ${{ vars.DOCKER_DISTRIBUTION_BUCKET }}
+          DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN: ${{ vars.DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN }}
+          DOCKER_CATALOG_PRIMARY_PRIVATE_KEY_B64: ${{ secrets.DOCKER_CATALOG_PRIMARY_PRIVATE_KEY_B64 }}
+          DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64: ${{ secrets.DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64 }}
+          NATIVE_INSTALL_SCRIPT_BUCKET: ${{ vars.NATIVE_INSTALL_SCRIPT_BUCKET }}
+          NATIVE_INSTALL_PUBLISH_ROLE_ARN: ${{ vars.NATIVE_INSTALL_PUBLISH_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          mhome="${MHOME_ROOT:-$HOME/.mhome}"
+          releases="$mhome/releases"
+          tag="${RELEASE_TAG:?}"
+          [ -e "$releases/.git" ] || {
+            echo "::error::runner is missing $releases; provision ~/.mhome on this machine"
+            exit 1
+          }
+          git -C "$releases" fetch --prune origin
+          git -C "$releases" fetch origin "refs/tags/${tag}:refs/tags/${tag}"
+          work="$mhome/work/${GITHUB_RUN_ID}-${GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}"
+          git -C "$releases" worktree add --detach "$work/releases" "$tag"
+          export WORK_ROOT="$work" RELEASES_DIR="$work/releases" MHOME_ROOT="$mhome"
+          bash "$work/releases/scripts/ci/run.sh"
