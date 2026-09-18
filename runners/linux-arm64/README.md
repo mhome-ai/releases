@@ -56,7 +56,7 @@ Native Linux ARM64 runtime builds use this machine via Baycat
 runs-on: [self-hosted, Linux, ARM64, release-linux-arm64]
 ```
 
-Linux native `workflow_dispatch` with `platform=linux` also runs `scope`
-and `prepare` on this runner. `linux-amd64` builds go to
-`release-linux-amd64`. Catalog draft/promote stays skipped until both
-artifacts exist in the same run.
+Linux native `workflow_dispatch` with `platform=linux-arm64` (tag `nlrX.Y.Z`)
+builds, drafts, and promotes only this architecture. `linux-amd64` uses
+`nlx` and `release-linux-amd64`. Both compile jobs share one host lock so they
+do not run at the same time.
