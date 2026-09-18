@@ -42,7 +42,7 @@ job workdirs live in Docker named volumes, not in this directory.
 Packaging downloads (Ollama, camera models, ffmpeg, ONNX Runtime) use
 `/home/runner/.cache/mhome-downloads`. The first Linux native job still
 fetches each SHA once; later jobs restore from this volume instead of
-Hugging Face or GitHub Releases. Isolated checkout cleanup does not delete
+Hugging Face or GitHub Releases. Clearing `~/.mhome/work/` does not delete
 this cache.
 
 ## Commands
