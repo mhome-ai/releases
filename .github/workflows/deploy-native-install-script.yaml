@@ -9,28 +9,17 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
   deploy:
-    runs-on: [self-hosted, Linux, ARM64, release-linux-arm64]
-    steps:
-      - env:
-          RELEASE_TAG: ${{ inputs.version }}
-          RELEASE_CHANNEL: install
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NATIVE_INSTALL_SCRIPT_BUCKET: ${{ vars.NATIVE_INSTALL_SCRIPT_BUCKET }}
-          NATIVE_INSTALL_PUBLISH_ROLE_ARN: ${{ vars.NATIVE_INSTALL_PUBLISH_ROLE_ARN }}
-          AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-        run: |
-          set -euo pipefail
-          mhome="${MHOME_ROOT:-$HOME/.mhome}"
-          releases="$mhome/releases"
-          [ -e "$releases/.git" ] || { echo "::error::runner is missing $releases"; exit 1; }
-          git -C "$releases" fetch --prune origin
-          git -C "$releases" fetch origin "${GITHUB_REF}"
-          work="$mhome/work/${GITHUB_RUN_ID}-${GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}"
-          git -C "$releases" worktree add --detach "$work/releases" "$GITHUB_SHA"
-          export WORK_ROOT="$work" RELEASES_DIR="$work/releases" MHOME_ROOT="$mhome"
-          bash "$work/releases/scripts/ci/run.sh"
+    uses: ./.github/workflows/run-tagged.yaml
+    environment: native-install
+    with:
+      runner_labels: '["self-hosted","Linux","ARM64","release-linux-arm64"]'
+      channel: install
+      tag: ${{ inputs.version }}
+      orchestrator_ref: ${{ github.sha }}
+      work_suffix: install
+    secrets: inherit

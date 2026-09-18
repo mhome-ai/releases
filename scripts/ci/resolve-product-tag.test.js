@@ -27,12 +27,14 @@ test("parses desktop tags onto canonical aX.Y.Z GitHub release", () => {
   assert.equal(resolveProductTag("am1.2.3").releaseTag, "a1.2.3");
   assert.equal(resolveProductTag("am1.2.3").sourceTag, "v1.2.3");
   assert.equal(resolveProductTag("am1.2.3").withPallas, true);
-  assert.equal(resolveProductTag("a1.2.3").platform, "all");
+  assert.equal(resolveProductTag("aw1.2.3").platform, "windows");
 });
 
 test("parses docker tags", () => {
-  assert.equal(resolveProductTag("d1.2.3").channel, "docker");
-  assert.equal(resolveProductTag("d1.2.3").sourceTag, "v1.2.3");
+  assert.equal(resolveProductTag("dlr1.2.3").channel, "docker");
+  assert.equal(resolveProductTag("dlr1.2.3").platform, "linux-arm64");
+  assert.equal(resolveProductTag("dlx1.2.3").platform, "linux-amd64");
+  assert.equal(resolveProductTag("dlr1.2.3").sourceTag, "v1.2.3");
 });
 
 test("does not let n steal nlr or a steal am", () => {
@@ -44,6 +46,8 @@ test("rejects unknown tags", () => {
   assert.throws(() => resolveProductTag("v1.2.3"), /Invalid product release tag/);
   assert.throws(() => resolveProductTag("nl1.2.3"), /Invalid product release tag/);
   assert.throws(() => resolveProductTag("n1.2.3"), /Invalid product release tag/);
+  assert.throws(() => resolveProductTag("a1.2.3"), /Invalid product release tag/);
+  assert.throws(() => resolveProductTag("d1.2.3"), /Invalid product release tag/);
 });
 
 test("native dispatch from tag does not read package.json", () => {

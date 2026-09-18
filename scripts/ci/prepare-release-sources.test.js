@@ -7,7 +7,10 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { cleanupReleaseSources } = require("./cleanup-release-sources");
-const { prepareReleaseSources } = require("./prepare-release-sources");
+const {
+  prepareReleaseSources,
+  printOutputs,
+} = require("./prepare-release-sources");
 
 function git(repo, ...args) {
   return execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" }).trim();
@@ -62,6 +65,7 @@ test("prepares sibling worktrees from product tags and leaves HEAD clones alone"
     tag: "v1.2.3",
     files: {
       "package.json": '{"version":"1.2.3"}\n',
+      "scripts/release/check-foundation-pins.js": "process.exit(0);\n",
       "release/sources/dependencies.json": `${JSON.stringify(
         {
           schemaVersion: 1,
@@ -167,4 +171,28 @@ test("rejects a lightweight product tag", (t) => {
       }),
     /must be annotated/
   );
+});
+
+test("prepare CLI prints stdout even when GITHUB_OUTPUT is set", () => {
+  const file = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), "mhome-gha-output-")),
+    "github-output"
+  );
+  const previous = process.env.GITHUB_OUTPUT;
+  process.env.GITHUB_OUTPUT = file;
+  const originalWrite = process.stdout.write;
+  let stdout = "";
+  process.stdout.write = (chunk) => {
+    stdout += String(chunk);
+    return true;
+  };
+  try {
+    printOutputs({ baycat_dir: "/tmp/baycat", source_root: "/tmp/work" });
+  } finally {
+    process.stdout.write = originalWrite;
+    if (previous === undefined) delete process.env.GITHUB_OUTPUT;
+    else process.env.GITHUB_OUTPUT = previous;
+  }
+  assert.match(stdout, /baycat_dir=\/tmp\/baycat/);
+  assert.match(fs.readFileSync(file, "utf8"), /source_root=\/tmp\/work/);
 });

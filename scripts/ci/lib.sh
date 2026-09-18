@@ -6,6 +6,7 @@ MHOME="${MHOME_ROOT:-$HOME/.mhome}"
 WORK_ID="${WORK_ID:-${GITHUB_RUN_ID:-local}-${GITHUB_JOB:-shell}-${GITHUB_RUN_ATTEMPT:-1}}"
 WORK_ROOT="${WORK_ROOT:-$MHOME/work/$WORK_ID}"
 RELEASES_DIR="${RELEASES_DIR:-$WORK_ROOT/releases}"
+GITHUB_RELEASE_REPO="${GITHUB_REPOSITORY:-mhome-ai/releases}"
 
 fail() {
   echo "::error::$*" >&2
@@ -70,7 +71,7 @@ prepare_product_sources() {
 }
 
 cleanup_worktree() {
-  node "$CI_ROOT/cleanup-release-sources.js" "$WORK_ROOT" || true
+  node "$CI_ROOT/cleanup-release-sources.js" "$WORK_ROOT"
 }
 
 assume_aws_role() {

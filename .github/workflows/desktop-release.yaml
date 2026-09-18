@@ -3,7 +3,6 @@ name: Release Tauri app
 on:
   push:
     tags:
-      - "a[0-9]*"
       - "am[0-9]*"
       - "aw[0-9]*"
   workflow_dispatch:
@@ -23,107 +22,21 @@ permissions:
 
 jobs:
   macos:
-    if: ${{ startsWith(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'am') || (startsWith(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'a') && !startsWith(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'am') && !startsWith(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'aw')) }}
-    runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
-    timeout-minutes: 480
-    steps:
-      - id: release
-        env:
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          RELEASE_CHANNEL: desktop
-          RELEASE_EXTRA: ${{ startsWith(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'am') && 'macos-publish' || 'macos' }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CSC_LINK: ${{ secrets.APPLE_CSC_LINK }}
-          APPLE_CSC_KEY_PASSWORD: ${{ secrets.APPLE_CSC_KEY_PASSWORD }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          set -euo pipefail
-          mhome="${MHOME_ROOT:-$HOME/.mhome}"
-          releases="$mhome/releases"
-          tag="${RELEASE_TAG:?}"
-          [ -e "$releases/.git" ] || { echo "::error::runner is missing $releases"; exit 1; }
-          git -C "$releases" fetch --prune origin
-          git -C "$releases" fetch origin "refs/tags/${tag}:refs/tags/${tag}"
-          work="$mhome/work/${GITHUB_RUN_ID}-${GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}"
-          git -C "$releases" worktree add --detach "$work/releases" "$tag"
-          export WORK_ROOT="$work" RELEASES_DIR="$work/releases" MHOME_ROOT="$mhome"
-          bash "$work/releases/scripts/ci/run.sh"
-      - if: ${{ steps.release.outputs.artifact_dir != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: mhome-macos-release
-          path: ${{ steps.release.outputs.artifact_dir }}
-          if-no-files-found: error
+    if: ${{ startsWith(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'am') }}
+    uses: ./.github/workflows/run-tagged.yaml
+    with:
+      runner_labels: '["self-hosted","macOS","ARM64","release-macos-primary"]'
+      channel: desktop
+      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      work_suffix: macos
+    secrets: inherit
 
   windows:
-    if: ${{ startsWith(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'aw') || (startsWith(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'a') && !startsWith(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'am') && !startsWith(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'aw')) }}
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 480
-    steps:
-      - id: release
-        env:
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          RELEASE_CHANNEL: desktop
-          RELEASE_EXTRA: ${{ startsWith(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'aw') && 'windows-publish' || 'windows' }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
-          SSL_COM_USERNAME: ${{ secrets.SSL_COM_USERNAME }}
-          SSL_COM_PASSWORD: ${{ secrets.SSL_COM_PASSWORD }}
-          SSL_COM_CREDENTIAL_ID: ${{ secrets.SSL_COM_CREDENTIAL_ID }}
-          SSL_COM_TOTP_SECRET: ${{ secrets.SSL_COM_TOTP_SECRET }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          mhome="${MHOME_ROOT:-$HOME/.mhome}"
-          releases="$mhome/releases"
-          tag="${RELEASE_TAG:?}"
-          [ -e "$releases/.git" ] || { echo "::error::runner is missing $releases"; exit 1; }
-          git -C "$releases" fetch --prune origin
-          git -C "$releases" fetch origin "refs/tags/${tag}:refs/tags/${tag}"
-          work="$mhome/work/${GITHUB_RUN_ID}-${GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}"
-          git -C "$releases" worktree add --detach "$work/releases" "$tag"
-          export WORK_ROOT="$work" RELEASES_DIR="$work/releases" MHOME_ROOT="$mhome"
-          bash "$work/releases/scripts/ci/run.sh"
-      - if: ${{ steps.release.outputs.artifact_dir != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: mhome-windows-release
-          path: ${{ steps.release.outputs.artifact_dir }}
-          if-no-files-found: error
-
-  publish:
-    if: ${{ startsWith(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'a') && !startsWith(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'am') && !startsWith(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'aw') }}
-    needs: [macos, windows]
-    runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: mhome-macos-release
-          path: ${{ runner.temp }}/desktop/macos
-      - uses: actions/download-artifact@v4
-        with:
-          name: mhome-windows-release
-          path: ${{ runner.temp }}/desktop/windows
-      - env:
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          RELEASE_CHANNEL: desktop
-          RELEASE_EXTRA: publish
-          DESKTOP_ARTIFACT_ROOT: ${{ runner.temp }}/desktop
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          mhome="${MHOME_ROOT:-$HOME/.mhome}"
-          releases="$mhome/releases"
-          tag="${RELEASE_TAG:?}"
-          [ -e "$releases/.git" ] || { echo "::error::runner is missing $releases"; exit 1; }
-          git -C "$releases" fetch --prune origin
-          git -C "$releases" fetch origin "refs/tags/${tag}:refs/tags/${tag}"
-          work="$mhome/work/${GITHUB_RUN_ID}-${GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}"
-          git -C "$releases" worktree add --detach "$work/releases" "$tag"
-          export WORK_ROOT="$work" RELEASES_DIR="$work/releases" MHOME_ROOT="$mhome"
-          bash "$work/releases/scripts/ci/run.sh"
+    if: ${{ startsWith(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, 'aw') }}
+    uses: ./.github/workflows/run-tagged.yaml
+    with:
+      runner_labels: '["self-hosted","Windows","X64"]'
+      channel: desktop
+      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      work_suffix: windows
+    secrets: inherit

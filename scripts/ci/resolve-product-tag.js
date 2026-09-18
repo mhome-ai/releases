@@ -14,7 +14,11 @@ const DESKTOP_PREFIXES = {
   am: "macos",
   al: "linux",
   aw: "windows",
-  a: "all",
+};
+
+const DOCKER_PREFIXES = {
+  dlr: "linux-arm64",
+  dlx: "linux-amd64",
 };
 
 function stripRef(ref) {
@@ -37,7 +41,7 @@ function resolveProductTag(ref) {
       withMeowcore: true,
     };
   }
-  const desktop = /^(am|al|aw|a)(\d+\.\d+\.\d+)$/.exec(tag);
+  const desktop = /^(am|al|aw)(\d+\.\d+\.\d+)$/.exec(tag);
   if (desktop) {
     const version = desktop[2];
     return {
@@ -51,13 +55,13 @@ function resolveProductTag(ref) {
       withMeowcore: true,
     };
   }
-  const docker = /^d(\d+\.\d+\.\d+)$/.exec(tag);
+  const docker = /^(dlr|dlx)(\d+\.\d+\.\d+)$/.exec(tag);
   if (docker) {
-    const version = docker[1];
+    const version = docker[2];
     return {
       channel: "docker",
-      prefix: "d",
-      platform: "all",
+      prefix: docker[1],
+      platform: DOCKER_PREFIXES[docker[1]],
       version,
       sourceTag: productSourceTag(version),
       releaseTag: tag,
@@ -129,6 +133,7 @@ if (require.main === module) {
 
 module.exports = {
   DESKTOP_PREFIXES,
+  DOCKER_PREFIXES,
   NATIVE_PREFIXES,
   resolveNativeDispatch,
   resolveProductTag,

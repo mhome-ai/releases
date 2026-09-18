@@ -35,6 +35,7 @@ jobs:
       channel: native
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       initialize_catalog: ${{ github.event_name == 'workflow_dispatch' && inputs.initialize_catalog || false }}
+      work_suffix: linux-arm64
     secrets: inherit
 
   linux-amd64:
@@ -49,6 +50,7 @@ jobs:
       channel: native
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       initialize_catalog: ${{ github.event_name == 'workflow_dispatch' && inputs.initialize_catalog || false }}
+      work_suffix: linux-amd64
     secrets: inherit
 
   macos:
@@ -63,6 +65,7 @@ jobs:
       channel: native
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       initialize_catalog: ${{ github.event_name == 'workflow_dispatch' && inputs.initialize_catalog || false }}
+      work_suffix: macos
     secrets: inherit
 
   windows:
@@ -77,4 +80,5 @@ jobs:
       channel: native
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       initialize_catalog: ${{ github.event_name == 'workflow_dispatch' && inputs.initialize_catalog || false }}
+      work_suffix: windows
     secrets: inherit

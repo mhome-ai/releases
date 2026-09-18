@@ -19,7 +19,9 @@ require_cmd git node aws
 [ -n "${NATIVE_INSTALL_SCRIPT_BUCKET:-}" ] || fail "Missing NATIVE_INSTALL_SCRIPT_BUCKET"
 [ -n "${NATIVE_INSTALL_PUBLISH_ROLE_ARN:-}" ] || fail "Missing NATIVE_INSTALL_PUBLISH_ROLE_ARN"
 
-cleanup() { cleanup_worktree; }
+cleanup() {
+  cleanup_worktree || echo "::warning::release worktree cleanup failed for $WORK_ROOT"
+}
 trap cleanup EXIT
 
 prepare_product_sources --baycat-version-mode match

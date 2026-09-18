@@ -23,7 +23,7 @@ cleanup() {
   if [ "${SIGNING_KEYCHAIN:-}" = "1" ]; then
     bash "$CI_ROOT/macos-signing-keychain.sh" release native-runtime || true
   fi
-  cleanup_worktree
+  cleanup_worktree || echo "::warning::release worktree cleanup failed for $WORK_ROOT"
   if [ -n "$LOCK_NAME" ]; then
     bash "$CI_ROOT/machine-lock.sh" release "$LOCK_NAME" || true
   fi

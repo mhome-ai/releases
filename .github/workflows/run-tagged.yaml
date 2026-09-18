@@ -12,19 +12,18 @@ on:
       tag:
         required: true
         type: string
-      extra:
-        required: false
-        type: string
-        default: ""
       initialize_catalog:
         required: false
         type: boolean
         default: false
-    outputs:
-      artifact_dir:
-        value: ${{ jobs.run.outputs.artifact_dir }}
-      version:
-        value: ${{ jobs.run.outputs.version }}
+      orchestrator_ref:
+        required: false
+        type: string
+        default: ""
+      work_suffix:
+        required: false
+        type: string
+        default: ""
 
 jobs:
   run:
@@ -34,17 +33,14 @@ jobs:
       contents: write
       id-token: write
       packages: write
-    outputs:
-      artifact_dir: ${{ steps.release.outputs.artifact_dir }}
-      version: ${{ steps.release.outputs.version }}
     steps:
       - name: Fetch tagged orchestrator and run
-        id: release
         shell: bash
         env:
           RELEASE_TAG: ${{ inputs.tag }}
           RELEASE_CHANNEL: ${{ inputs.channel }}
-          RELEASE_EXTRA: ${{ inputs.extra }}
+          ORCHESTRATOR_REF: ${{ inputs.orchestrator_ref }}
+          WORK_SUFFIX: ${{ inputs.work_suffix }}
           INITIALIZE_CATALOG: ${{ inputs.initialize_catalog }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUNTIME_CATALOG_PRIVATE_KEY_B64: ${{ secrets.RUNTIME_CATALOG_PRIVATE_KEY_B64 }}
@@ -79,8 +75,20 @@ jobs:
             exit 1
           }
           git -C "$releases" fetch --prune origin
-          git -C "$releases" fetch origin "refs/tags/${tag}:refs/tags/${tag}"
-          work="$mhome/work/${GITHUB_RUN_ID}-${GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}"
-          git -C "$releases" worktree add --detach "$work/releases" "$tag"
-          export WORK_ROOT="$work" RELEASES_DIR="$work/releases" MHOME_ROOT="$mhome"
+          work_id="${GITHUB_RUN_ID}-${WORK_SUFFIX:-$GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}"
+          work="$mhome/work/${work_id}"
+          if [ -e "$work" ]; then
+            git -C "$releases" worktree remove --force "$work/releases" 2>/dev/null || true
+            git -C "$releases" worktree prune
+            rm -rf "$work"
+          fi
+          mkdir -p "$work"
+          if [ -n "${ORCHESTRATOR_REF:-}" ]; then
+            git -C "$releases" fetch origin "${GITHUB_REF}"
+            git -C "$releases" worktree add --detach "$work/releases" "$ORCHESTRATOR_REF"
+          else
+            git -C "$releases" fetch origin "refs/tags/${tag}:refs/tags/${tag}"
+            git -C "$releases" worktree add --detach "$work/releases" "$tag"
+          fi
+          export WORK_ID="$work_id" WORK_ROOT="$work" RELEASES_DIR="$work/releases" MHOME_ROOT="$mhome"
           bash "$work/releases/scripts/ci/run.sh"

@@ -195,6 +195,15 @@ function writeProvenance({
 }) {
   const revision = (directory) =>
     directory ? git(directory, ["rev-parse", "HEAD"]) : null;
+  const committedAt = (directory) => {
+    if (!directory) return null;
+    const raw = git(directory, ["show", "-s", "--format=%cI", "HEAD"]);
+    const iso = new Date(raw).toISOString();
+    if (!Number.isFinite(new Date(iso).getTime())) {
+      fail(`invalid commit date in ${directory}: ${raw}`);
+    }
+    return iso;
+  };
   const pin = meowcoreDir ? readMeowcorePin(baycatDir) : null;
   const payload = {
     schemaVersion: 1,
@@ -207,6 +216,7 @@ function writeProvenance({
       repository: PRODUCT_REPOS.baycat.repository,
       tag: productSourceTag(version),
       revision: revision(baycatDir),
+      committedAt: committedAt(baycatDir),
     },
     pallasCat: pallasDir
       ? {
@@ -282,6 +292,9 @@ function prepareReleaseSources({
     meowcoreDir: meowcoreDir || undefined,
     baycatVersionMode,
   });
+  if (meowcoreDir) {
+    verifyFoundationPins(baycatDir, meowcoreDir);
+  }
   const provenance = writeProvenance({
     version,
     baycatDir,
@@ -303,13 +316,30 @@ function prepareReleaseSources({
   };
 }
 
-function writeGithubOutput(outputs) {
-  const file = process.env.GITHUB_OUTPUT;
+function verifyFoundationPins(baycatDir, meowcoreDir) {
+  const script = path.join(baycatDir, "scripts/release/check-foundation-pins.js");
+  if (!fs.existsSync(script)) {
+    fail(`missing Foundation pin check: ${script}`);
+  }
+  const result = spawnSync(
+    process.execPath,
+    [script, "--graph", "--baycat", baycatDir, "--meowcore", meowcoreDir],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+  );
+  if (result.status !== 0) {
+    fail(
+      (result.stderr || result.stdout || "Foundation crate pin check failed").trim()
+    );
+  }
+}
+
+function printOutputs(outputs) {
   const body = Object.entries(outputs)
     .map(([key, value]) => `${key}=${value}`)
     .join("\n");
+  process.stdout.write(`${body}\n`);
+  const file = process.env.GITHUB_OUTPUT;
   if (file) fs.appendFileSync(file, `${body}\n`);
-  else process.stdout.write(`${body}\n`);
 }
 
 if (require.main === module) {
@@ -342,7 +372,7 @@ if (require.main === module) {
       withPallas: values["with-pallas"],
       baycatVersionMode: values["baycat-version-mode"],
     });
-    writeGithubOutput(outputs);
+    printOutputs(outputs);
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;
@@ -352,6 +382,7 @@ if (require.main === module) {
 module.exports = {
   fetchTag,
   prepareReleaseSources,
+  printOutputs,
   readMeowcorePin,
   requireExistingClone,
 };
