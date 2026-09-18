@@ -1,0 +1,47 @@
+# Long-lived Linux amd64 build + GitHub Actions runner.
+# Instance identity comes from the gitignored sibling .env.
+# stop/start keeps the same container + named volumes.
+# `docker compose down` keeps volumes unless you pass -v.
+#
+# On Apple Silicon this must be Rosetta amd64 userspace, not QEMU.
+# Keep volumes separate from linux-arm64-runner.
+
+name: meow-linux-amd64-runner
+
+services:
+  runner:
+    build:
+      context: .
+    image: meow-linux-amd64-runner:local
+    platform: linux/amd64
+    container_name: meow-linux-amd64-runner
+    hostname: meow-linux-amd64-runner
+    restart: unless-stopped
+    environment:
+      CARGO_HOME: /home/runner/.cargo
+      RUSTUP_HOME: /home/runner/.rustup
+      CARGO_TARGET_DIR: /home/runner/.cache/cargo-target
+      MHOME_DOWNLOAD_CACHE_ROOT: /home/runner/.cache/mhome-downloads
+      CARGO_TERM_COLOR: always
+      RUNNER_VERSION: "2.337.0"
+      RUNNER_SHA256: "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613"
+      RUNNER_URL: ${RUNNER_URL:-}
+      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
+      RUNNER_NAME: ${RUNNER_NAME}
+      RUNNER_LABELS: ${RUNNER_LABELS:-Linux,AMD64,release-linux-amd64}
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+    volumes:
+      - cargo-home:/home/runner/.cargo
+      - rustup-home:/home/runner/.rustup
+      - cargo-target:/home/runner/.cache/cargo-target
+      - download-cache:/home/runner/.cache/mhome-downloads
+      - runner-software:/home/runner/actions-runner
+      - runner-work:/home/runner/_work
+
+volumes:
+  cargo-home:
+  rustup-home:
+  cargo-target:
+  download-cache:
+  runner-software:
+  runner-work:
