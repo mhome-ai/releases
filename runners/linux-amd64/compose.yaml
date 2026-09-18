@@ -1,5 +1,5 @@
 # Long-lived Linux amd64 build + GitHub Actions runner.
-# Instance identity comes from the gitignored sibling .env.
+# The gitignored sibling .env only supplies RUNNER_TOKEN for first registration.
 # stop/start keeps the same container + named volumes.
 # `docker compose down` keeps volumes unless you pass -v.
 #
@@ -18,17 +18,6 @@ services:
     hostname: meow-linux-amd64-runner
     restart: unless-stopped
     environment:
-      CARGO_HOME: /home/runner/.cargo
-      RUSTUP_HOME: /home/runner/.rustup
-      CARGO_TARGET_DIR: /home/runner/.cache/cargo-target
-      MHOME_DOWNLOAD_CACHE_ROOT: /home/runner/.cache/mhome-downloads
-      CARGO_TERM_COLOR: always
-      RUNNER_VERSION: "2.337.0"
-      RUNNER_SHA256: "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613"
-      RUNNER_URL: ${RUNNER_URL:-}
-      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
-      RUNNER_NAME: ${RUNNER_NAME}
-      RUNNER_LABELS: ${RUNNER_LABELS:-Linux,AMD64,release-linux-amd64}
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
     volumes:
       - cargo-home:/home/runner/.cargo

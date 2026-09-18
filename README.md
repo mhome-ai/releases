@@ -6,7 +6,7 @@ the binaries themselves.
 
 Linux native builds run on long-lived self-hosted GitHub Actions runners.
 Those Docker recipes are in `runners/`. Clone this repo on any machine that
-should host a builder, copy `.env.example` to `.env`, and start compose.
-Each machine needs its own `RUNNER_NAME`. Compose project names are stable, so
-moving this source does not recreate containers that are already running on a
-host.
+should host a builder, put `RUNNER_TOKEN` in `.env`, and start compose.
+Org URL, runner name, and labels are fixed in the recipe. Compose project
+names are stable, so editing this source does not recreate containers that
+are already running on a host.

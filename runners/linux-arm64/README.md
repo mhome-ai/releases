@@ -8,13 +8,14 @@ this compose file on x64; that path is QEMU and is not a release builder.
 The amd64 sibling is `../linux-amd64/`; both compose projects can stay up on
 the same Apple Silicon Docker host.
 
+This recipe registers an organization runner at `https://github.com/mhome-ai`
+named `meow-linux-arm64-runner` with labels `Linux,ARM64,release-linux-arm64`.
+Those values are fixed in `entrypoint.sh`.
+
 ## Setup
 
 Copy `.env.example` to `.env` in this directory (gitignored) and set
-`RUNNER_NAME` plus a registration token. Default
-`RUNNER_URL=https://github.com/mhome-ai` registers an **organization** runner
-so any mhome-ai repo can use it. Use `https://github.com/mhome-ai/baycat` only
-if the runner must stay on one repo.
+`RUNNER_TOKEN`.
 
 Get the token from the **org** runner page (needs org admin):
 https://github.com/organizations/mhome-ai/settings/actions/runners/new
@@ -22,7 +23,6 @@ https://github.com/organizations/mhome-ai/settings/actions/runners/new
 Choose Linux / ARM64, then copy `--token`. When asked which repositories can
 use the runner, pick **All repositories**. Tokens expire in about an hour and
 are only needed the first time the Docker volume has no `.runner` file.
-Each host needs a distinct `RUNNER_NAME`.
 
 Private repos need a GitHub plan that allows org-level self-hosted runners
 (typically Team or Enterprise). If registration returns 404 or jobs never
@@ -33,16 +33,16 @@ job workdirs live in Docker named volumes, not in this directory.
 `docker compose down` keeps those volumes; `down -v` wipes them.
 
 Packaging downloads (Ollama, camera models, ffmpeg, ONNX Runtime) use
-`MHOME_DOWNLOAD_CACHE_ROOT=/home/runner/.cache/mhome-downloads`. The first
-Linux native job still fetches each SHA once; later jobs restore from this
-volume instead of Hugging Face or GitHub Releases. Isolated checkout cleanup
-does not delete this cache.
+`/home/runner/.cache/mhome-downloads`. The first Linux native job still
+fetches each SHA once; later jobs restore from this volume instead of
+Hugging Face or GitHub Releases. Isolated checkout cleanup does not delete
+this cache.
 
 ## Commands
 
 ```bash
 cd runners/linux-arm64
-cp .env.example .env   # first time only
+cp .env.example .env   # first time only; set RUNNER_TOKEN
 ./compose.sh up -d --build
 ./compose.sh logs -f
 ./compose.sh stop
