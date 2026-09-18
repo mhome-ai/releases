@@ -51,9 +51,17 @@ test("each product workflow is one job that calls run-tagged.yaml", () => {
     const text = read(file);
     assert.match(text, /uses: \.\/\.github\/workflows\/run-tagged\.yaml/, file);
     assert.doesNotMatch(text, /^\s+if:/m, file);
+    assert.doesNotMatch(text, /^\s+environment:/m, file);
     assert.doesNotMatch(text, /worktree add --detach/, file);
     assert.doesNotMatch(text, /scripts\/ci\/run\.sh/, file);
   }
+});
+
+test("OIDC environments are applied inside run-tagged.yaml", () => {
+  const text = read(".github/workflows/run-tagged.yaml");
+  assert.match(text, /github_environment:/);
+  assert.equal(text.includes("environment: ${{ inputs.github_environment }}"), true);
+  assert.equal(text.includes("if: ${{ inputs.github_environment != '' }}"), true);
 });
 
 test("docker release is a complete per-platform product", () => {
@@ -64,17 +72,25 @@ test("docker release is a complete per-platform product", () => {
   assert.match(script, /--platform "\$platform"/);
   assert.doesNotMatch(script, /skipping Docker Catalog/);
   assert.doesNotMatch(script, /require_cmd gh/);
-  const arm = read(".github/workflows/docker-linux-arm64.yaml");
-  const amd = read(".github/workflows/docker-linux-amd64.yaml");
-  assert.match(arm, /docker-stable-linux-arm64/);
-  assert.match(amd, /docker-stable-linux-amd64/);
-  assert.doesNotMatch(arm, /group: docker-release/);
-  assert.doesNotMatch(amd, /group: docker-release/);
+});
+
+test("linux native, docker, and install share one Docker host lock", () => {
+  for (const file of [
+    ".github/workflows/native-linux-arm64.yaml",
+    ".github/workflows/native-linux-amd64.yaml",
+    ".github/workflows/docker-linux-arm64.yaml",
+    ".github/workflows/docker-linux-amd64.yaml",
+    ".github/workflows/deploy-native-install-script.yaml",
+  ]) {
+    const text = read(file);
+    assert.match(text, /group: linux-docker-host/, file);
+    assert.match(text, /github_environment:/, file);
+  }
 });
 
 test("install workflow assumes a dedicated native-install environment", () => {
   const text = read(".github/workflows/deploy-native-install-script.yaml");
-  assert.match(text, /environment: native-install/);
+  assert.match(text, /github_environment: native-install/);
 });
 
 test("tagged orchestrator is taken from ~/.mhome/releases", () => {

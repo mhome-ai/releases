@@ -12,6 +12,10 @@ on:
       tag:
         required: true
         type: string
+      github_environment:
+        required: false
+        type: string
+        default: ""
       initialize_catalog:
         required: false
         type: boolean
@@ -27,6 +31,76 @@ on:
 
 jobs:
   run:
+    if: ${{ inputs.github_environment != '' }}
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    environment: ${{ inputs.github_environment }}
+    timeout-minutes: 480
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
+    steps:
+      - name: Fetch tagged orchestrator and run
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          ORCHESTRATOR_REF: ${{ inputs.orchestrator_ref }}
+          WORK_SUFFIX: ${{ inputs.work_suffix }}
+          INITIALIZE_CATALOG: ${{ inputs.initialize_catalog }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUNTIME_CATALOG_PRIVATE_KEY_B64: ${{ inputs.channel == 'native' && secrets.RUNTIME_CATALOG_PRIVATE_KEY_B64 || '' }}
+          RUNTIME_CATALOG_BUCKET: ${{ inputs.channel == 'native' && secrets.RUNTIME_CATALOG_BUCKET || '' }}
+          RUNTIME_PUBLISH_ROLE_ARN: ${{ (inputs.channel == 'native' || inputs.channel == 'install') && vars.RUNTIME_PUBLISH_ROLE_ARN || '' }}
+          AWS_REGION: ${{ (inputs.channel == 'native' || inputs.channel == 'docker' || inputs.channel == 'install') && (vars.AWS_REGION || 'us-east-1') || '' }}
+          APPLE_CSC_LINK: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.APPLE_CSC_LINK || '' }}
+          APPLE_CSC_KEY_PASSWORD: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.APPLE_CSC_KEY_PASSWORD || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.channel == 'desktop' && secrets.UPDATER_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.channel == 'desktop' && secrets.UPDATER_PRIVATE_KEY_PASSWORD || '' }}
+          APPLE_ID: ${{ inputs.channel == 'desktop' && secrets.APPLE_ID || '' }}
+          APPLE_ID_PASSWORD: ${{ inputs.channel == 'desktop' && secrets.APPLE_ID_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ inputs.channel == 'desktop' && secrets.APPLE_TEAM_ID || '' }}
+          SSL_COM_USERNAME: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_USERNAME || '' }}
+          SSL_COM_PASSWORD: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_PASSWORD || '' }}
+          SSL_COM_CREDENTIAL_ID: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_CREDENTIAL_ID || '' }}
+          SSL_COM_TOTP_SECRET: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_TOTP_SECRET || '' }}
+          DOCKER_DISTRIBUTION_BASE_URL: ${{ inputs.channel == 'docker' && vars.DOCKER_DISTRIBUTION_BASE_URL || '' }}
+          DOCKER_DISTRIBUTION_BUCKET: ${{ inputs.channel == 'docker' && vars.DOCKER_DISTRIBUTION_BUCKET || '' }}
+          DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'docker' && vars.DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN || '' }}
+          DOCKER_CATALOG_PRIMARY_PRIVATE_KEY_B64: ${{ inputs.channel == 'docker' && secrets.DOCKER_CATALOG_PRIMARY_PRIVATE_KEY_B64 || '' }}
+          DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64: ${{ inputs.channel == 'docker' && secrets.DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64 || '' }}
+          NATIVE_INSTALL_SCRIPT_BUCKET: ${{ inputs.channel == 'install' && vars.NATIVE_INSTALL_SCRIPT_BUCKET || '' }}
+          NATIVE_INSTALL_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'install' && vars.NATIVE_INSTALL_PUBLISH_ROLE_ARN || '' }}
+        run: |
+          set -euo pipefail
+          mhome="${MHOME_ROOT:-$HOME/.mhome}"
+          releases="$mhome/releases"
+          tag="${RELEASE_TAG:?}"
+          [ -e "$releases/.git" ] || {
+            echo "::error::runner is missing $releases; provision ~/.mhome on this machine"
+            exit 1
+          }
+          git -C "$releases" fetch --prune origin
+          work_id="${GITHUB_RUN_ID}-${WORK_SUFFIX:-$GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}"
+          work="$mhome/work/${work_id}"
+          if [ -e "$work" ]; then
+            git -C "$releases" worktree remove --force "$work/releases" 2>/dev/null || true
+            git -C "$releases" worktree prune
+            rm -rf "$work"
+          fi
+          mkdir -p "$work"
+          if [ -n "${ORCHESTRATOR_REF:-}" ]; then
+            git -C "$releases" fetch origin "${GITHUB_REF}"
+            git -C "$releases" worktree add --detach "$work/releases" "$ORCHESTRATOR_REF"
+          else
+            git -C "$releases" fetch origin "refs/tags/${tag}:refs/tags/${tag}"
+            git -C "$releases" worktree add --detach "$work/releases" "$tag"
+          fi
+          export WORK_ID="$work_id" WORK_ROOT="$work" RELEASES_DIR="$work/releases" MHOME_ROOT="$mhome"
+          bash "$work/releases/scripts/ci/run.sh"
+
+  run_open:
+    if: ${{ inputs.github_environment == '' }}
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
     timeout-minutes: 480
     permissions:

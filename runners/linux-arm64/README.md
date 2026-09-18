@@ -49,14 +49,14 @@ cp .env.example .env   # first time only; set RUNNER_TOKEN
 ./compose.sh start
 ```
 
-Native Linux ARM64 runtime builds use this machine via Baycat
-`.github/workflows/native-runtime-platform-release.yaml`:
+Native Linux ARM64 runtime builds use this machine via
+`mhome-ai/releases` `.github/workflows/native-linux-arm64.yaml`:
 
 ```yaml
 runs-on: [self-hosted, Linux, ARM64, release-linux-arm64]
 ```
 
-Linux native `workflow_dispatch` with `platform=linux-arm64` (tag `nlrX.Y.Z`)
-builds, drafts, and promotes only this architecture. `linux-amd64` uses
-`nlx` and `release-linux-amd64`. Both compile jobs share one host lock so they
-do not run at the same time.
+Tag `nlrX.Y.Z` on `mhome-ai/releases` builds and promotes only this
+architecture. `linux-amd64` uses `nlx` and `release-linux-amd64`. Linux native,
+Docker, and install jobs share the `linux-docker-host` concurrency group so they
+do not compile on this Docker host at the same time.

@@ -19,13 +19,13 @@ permissions:
 jobs:
   run:
     uses: ./.github/workflows/run-tagged.yaml
-    environment: docker-release
     concurrency:
-      group: docker-stable-linux-amd64
+      group: linux-docker-host
       cancel-in-progress: false
     with:
       runner_labels: '["self-hosted","Linux","AMD64","release-linux-amd64"]'
       channel: docker
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      github_environment: docker-release
       work_suffix: linux-amd64
     secrets: inherit
