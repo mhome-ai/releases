@@ -44,6 +44,14 @@ test("native GitHub releases never steal Desktop Latest", () => {
   assert.match(script, /--draft=false --latest=false/);
 });
 
+test("native draft retries skip GitHub upload when the asset digest matches", () => {
+  const script = read("scripts/ci/native-release.sh");
+  const lib = read("scripts/ci/lib.sh");
+  assert.match(script, /upload_github_release_asset_if_changed/);
+  assert.match(lib, /github-release-asset-match\.js/);
+  assert.match(lib, /Skipping GitHub upload/);
+});
+
 test("each product workflow is one job that calls run-tagged.yaml", () => {
   const files = productWorkflows();
   assert.ok(files.length >= 8, `expected split product workflows, got ${files.join(", ")}`);

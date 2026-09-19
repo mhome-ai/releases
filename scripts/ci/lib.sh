@@ -96,6 +96,39 @@ cleanup_worktree() {
   node "$CI_ROOT/cleanup-release-sources.js" "$WORK_ROOT"
 }
 
+file_sha256() {
+  node -e '
+    const fs = require("fs");
+    const crypto = require("crypto");
+    const hash = crypto.createHash("sha256");
+    const input = fs.createReadStream(process.argv[1]);
+    input.on("data", (chunk) => hash.update(chunk));
+    input.on("error", (err) => {
+      console.error(err);
+      process.exit(1);
+    });
+    input.on("end", () => process.stdout.write(hash.digest("hex")));
+  ' "$1"
+}
+
+# Draft retries skip GitHub upload when the uploaded asset digest already
+# matches the local file. Public releases never modify assets.
+upload_github_release_asset_if_changed() {
+  local tag="$1" repo="$2" file="$3"
+  local name digest assets decision
+  name="$(basename "$file")"
+  [ -f "$file" ] || fail "missing release asset $file"
+  digest="sha256:$(file_sha256 "$file")"
+  assets="$(gh release view "$tag" --repo "$repo" --json assets)"
+  decision="$(printf '%s' "$assets" | node "$CI_ROOT/github-release-asset-match.js" --name "$name" --digest "$digest")"
+  if [ "$decision" = "skip" ]; then
+    echo "Skipping GitHub upload for $name ($digest matches)"
+    return
+  fi
+  echo "Uploading $name"
+  gh release upload "$tag" --repo "$repo" --clobber "$file"
+}
+
 assume_aws_role() {
   local role="${1:-}"
   local region="${AWS_REGION:-us-east-1}"

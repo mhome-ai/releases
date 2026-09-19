@@ -152,7 +152,7 @@ fi
 is_draft="$(gh release view "$PRODUCT_RELEASE_TAG" --repo "$repo" --json isDraft --jq .isDraft)"
 if [ "$is_draft" = "true" ]; then
   for file in "${release_files[@]}"; do
-    gh release upload "$PRODUCT_RELEASE_TAG" --repo "$repo" --clobber "$file"
+    upload_github_release_asset_if_changed "$PRODUCT_RELEASE_TAG" "$repo" "$file"
   done
 else
   echo "Release $PRODUCT_RELEASE_TAG is already public; assets will be verified but never modified."
