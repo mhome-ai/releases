@@ -13,10 +13,16 @@ compose projects, labels, and named volumes. Each container mounts the host
 Docker socket and a persistent `~/.ssh` volume for GitHub SSH keys.
 
 Put a read key for `baycat`, `meowcore-rust`, and `releases` at
-`id_ed25519` in that volume **before** the first start. The entrypoint clones
-those three into the persistent `~/.mhome` volume if they are missing. Image
-build does not clone: the key is not in the build. Workflows never clone;
-they only `git fetch` tags into worktrees.
+`id_ed25519` in that volume **before** the first start:
+
+```bash
+./seed-runner-ssh.sh meow-linux-arm64-runner_runner-ssh
+./seed-runner-ssh.sh meow-linux-amd64-runner_runner-ssh
+```
+
+The entrypoint clones those three into the persistent `~/.mhome` volume if
+they are missing. Image build does not clone: the key is not in the build.
+Workflows never clone; they only `git fetch` tags into worktrees.
 
 This is only source. `docker compose` identity is the `name:` in each
 `compose.yaml`. Already-running containers and their volumes stay put when

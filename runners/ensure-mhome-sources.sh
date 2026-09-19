@@ -6,12 +6,23 @@ set -euo pipefail
 
 root="${MHOME_ROOT:-$HOME/.mhome}"
 mkdir -p "$root"
+mkdir -p "$HOME/.ssh"
+chmod 700 "$HOME/.ssh"
 
-if [ ! -f "$HOME/.ssh/id_ed25519" ] && [ ! -f "$HOME/.ssh/id_rsa" ]; then
+key=""
+if [ -f "$HOME/.ssh/id_ed25519" ]; then
+  chmod 600 "$HOME/.ssh/id_ed25519"
+  key="$HOME/.ssh/id_ed25519"
+elif [ -f "$HOME/.ssh/id_rsa" ]; then
+  chmod 600 "$HOME/.ssh/id_rsa"
+  key="$HOME/.ssh/id_rsa"
+else
   echo "runner is missing a GitHub SSH key at $HOME/.ssh/id_ed25519" >&2
   echo "put a read key for baycat, meowcore-rust, and releases in the runner-ssh volume" >&2
   exit 1
 fi
+
+export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o IdentitiesOnly=yes -i '${key}'"
 
 clone_if_missing() {
   local name="$1"
