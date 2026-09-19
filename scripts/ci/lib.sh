@@ -72,11 +72,13 @@ prepare_product_sources() {
     shift
   done
   out="$(mktemp)"
+  # ${extra[@]+...} stays silent when extra is empty; "${extra[@]}" is unbound
+  # on macOS Bash 3.2 with set -u (install channel has no --with-* flags).
   node "$CI_ROOT/prepare-release-sources.js" \
     --version "$PRODUCT_VERSION" \
     --work-id "$WORK_ID" \
     --baycat-version-mode "$mode" \
-    "${extra[@]}" >"$out"
+    ${extra[@]+"${extra[@]}"} >"$out"
   while IFS= read -r line; do
     case "$line" in
       baycat_dir=*) BAYCAT_DIR="${line#baycat_dir=}" ;;

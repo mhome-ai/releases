@@ -205,3 +205,15 @@ test("run.sh refuses a tag that does not match this runner", () => {
   assert.match(text, /PRODUCT_CHANNEL" = "\$CHANNEL"/);
   assert.match(text, /PRODUCT_PLATFORM" = "\$WORK_SUFFIX"/);
 });
+
+test("CI bash never expands a possibly-empty array under set -u", () => {
+  assert.match(
+    read("scripts/ci/native-release.sh"),
+    /\$\{previous_args\[@\]\+"\$\{previous_args\[@\]\}"\}/
+  );
+  assert.match(
+    read("scripts/ci/docker-release.sh"),
+    /\$\{previous_args\[@\]\+"\$\{previous_args\[@\]\}"\}/
+  );
+  assert.match(read("scripts/ci/lib.sh"), /\$\{extra\[@\]\+"\$\{extra\[@\]\}"\}/);
+});

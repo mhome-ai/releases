@@ -79,6 +79,9 @@ fetch_status() {
 }
 catalog_status="$(fetch_status "$catalog_url" build/runtime-catalog/previous-catalog.json)"
 signature_status="$(fetch_status "$signature_url" build/runtime-catalog/previous-catalog.json.minisig)"
+# First platform catalog has no predecessor. Bash 3.2 + set -u treats
+# "${arr[@]}" as unbound when arr is empty (macOS /bin/bash); the EXIT trap
+# then reports 0, so the job looks green. ${arr[@]+"${arr[@]}"} vanishes.
 previous_args=()
 if [ "$catalog_status" = "200" ] && [ "$signature_status" = "200" ]; then
   node scripts/release/native/runtime-catalog-config.js public-key-file \
@@ -116,7 +119,7 @@ node scripts/release/native/generate-runtime-catalog.js \
   --runtime-alternatives true \
   --output build/runtime-catalog/catalog.json \
   --publish-assets-output build/runtime-catalog/publish-assets.txt \
-  "${previous_args[@]}"
+  ${previous_args[@]+"${previous_args[@]}"}
 
 printf '%s' "$RUNTIME_CATALOG_PRIVATE_KEY_B64" | base64 --decode > build/runtime-catalog/catalog.key
 minisign -Sm build/runtime-catalog/catalog.json \

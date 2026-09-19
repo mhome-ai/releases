@@ -160,7 +160,7 @@ node scripts/release/docker/docker-release-plan.js \
   --version "$PRODUCT_VERSION" \
   --platform "$platform" \
   --output build/docker-release-manifest.json \
-  "${previous_args[@]}"
+  ${previous_args[@]+"${previous_args[@]}"}
 node --test \
   scripts/lib/docker-product-version.test.js \
   scripts/lib/docker-image-state.test.js \
