@@ -9,6 +9,12 @@ mkdir -p "$root"
 mkdir -p "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
 
+if ! command -v ssh >/dev/null 2>&1 && [ ! -x /usr/bin/ssh ]; then
+  echo "runner image is missing openssh-client" >&2
+  exit 1
+fi
+ssh_bin="$(command -v ssh 2>/dev/null || echo /usr/bin/ssh)"
+
 key=""
 if [ -f "$HOME/.ssh/id_ed25519" ]; then
   chmod 600 "$HOME/.ssh/id_ed25519"
@@ -22,7 +28,7 @@ else
   exit 1
 fi
 
-export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o IdentitiesOnly=yes -i '${key}'"
+export GIT_SSH_COMMAND="${ssh_bin} -o BatchMode=yes -o IdentitiesOnly=yes -i ${key}"
 
 clone_if_missing() {
   local name="$1"
