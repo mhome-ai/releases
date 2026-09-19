@@ -25,6 +25,5 @@ jobs:
       runner_labels: '["self-hosted","macOS","ARM64","release-macos-primary"]'
       channel: desktop
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-      github_environment: desktop-release
       work_suffix: macos
     secrets: inherit

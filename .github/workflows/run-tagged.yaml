@@ -12,9 +12,6 @@ on:
       tag:
         required: true
         type: string
-      github_environment:
-        required: true
-        type: string
       initialize_catalog:
         required: false
         type: boolean
@@ -31,7 +28,6 @@ on:
 jobs:
   run:
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
-    environment: ${{ inputs.github_environment }}
     timeout-minutes: 480
     permissions:
       contents: write

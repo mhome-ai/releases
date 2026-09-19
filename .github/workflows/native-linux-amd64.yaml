@@ -29,7 +29,6 @@ jobs:
       runner_labels: '["self-hosted","Linux","AMD64","release-linux-amd64"]'
       channel: native
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-      github_environment: native-runtime-release
       initialize_catalog: ${{ github.event_name == 'workflow_dispatch' && inputs.initialize_catalog || false }}
       work_suffix: linux-amd64
     secrets: inherit

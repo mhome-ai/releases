@@ -57,24 +57,17 @@ test("each product workflow is one job that calls run-tagged.yaml", () => {
   }
 });
 
-test("every product workflow names a GitHub Environment for the inner job", () => {
+test("run-tagged has one job and does not use GitHub Environments", () => {
   const text = read(".github/workflows/run-tagged.yaml");
-  assert.match(text, /github_environment:\n\s+required: true/);
-  assert.equal(text.includes("environment: ${{ inputs.github_environment }}"), true);
+  assert.doesNotMatch(text, /github_environment/);
+  assert.doesNotMatch(text, /^\s+environment:/m);
   assert.doesNotMatch(text, /run_open:/);
   assert.doesNotMatch(text, /^\s+if:/m);
   for (const file of productWorkflows()) {
     const caller = read(file);
-    assert.match(caller, /github_environment:/, file);
+    assert.doesNotMatch(caller, /github_environment/, file);
+    assert.doesNotMatch(caller, /^\s+environment:/m, file);
   }
-  assert.match(
-    read(".github/workflows/desktop-macos.yaml"),
-    /github_environment: desktop-release/
-  );
-  assert.match(
-    read(".github/workflows/desktop-windows.yaml"),
-    /github_environment: desktop-release/
-  );
 });
 
 test("docker release is a complete per-platform product", () => {
@@ -97,13 +90,12 @@ test("linux native, docker, and install share one Docker host lock", () => {
   ]) {
     const text = read(file);
     assert.match(text, /group: linux-docker-host/, file);
-    assert.match(text, /github_environment:/, file);
   }
 });
 
-test("install workflow assumes a dedicated native-install environment", () => {
+test("install workflow dispatches from current orchestrator SHA", () => {
   const text = read(".github/workflows/deploy-native-install-script.yaml");
-  assert.match(text, /github_environment: native-install/);
+  assert.equal(text.includes("orchestrator_ref: ${{ github.sha }}"), true);
 });
 
 test("tagged orchestrator is taken from ~/.mhome/releases", () => {
