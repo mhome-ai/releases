@@ -32,6 +32,7 @@ chmod 600 "$HOME/.ssh/known_hosts"
 if ! grep -q github.com "$HOME/.ssh/known_hosts"; then
   ssh-keyscan -t ed25519 github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
 fi
+bash /usr/local/bin/ensure-mhome-sources.sh
 
 if ! command -v rustc >/dev/null 2>&1; then
   echo "Installing Rust toolchain into persistent volumes..."

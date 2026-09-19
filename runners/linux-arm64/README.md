@@ -24,6 +24,11 @@ Choose Linux / ARM64, then copy `--token`. When asked which repositories can
 use the runner, pick **All repositories**. Tokens expire in about an hour and
 are only needed the first time the Docker volume has no `.runner` file.
 
+Put a GitHub SSH read key for `baycat`, `meowcore-rust`, and `releases` in
+the `runner-ssh` volume (`id_ed25519`) before the first start. The
+entrypoint clones those three into `~/.mhome` if they are missing. Workflows
+do not clone.
+
 Private repos need a GitHub plan that allows org-level self-hosted runners
 (typically Team or Enterprise). If registration returns 404 or jobs never
 arrive, check that permission.

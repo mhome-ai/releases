@@ -10,16 +10,19 @@ into this public `mhome-ai/releases` bucket.
 
 Both can stay up on the same Apple Silicon Docker host. They use different
 compose projects, labels, and named volumes. Each container mounts the host
-Docker socket and a persistent `~/.ssh` volume for GitHub deploy keys. Put the
-key in that volume before the first fetch; workflows do not clone and do not
-carry GitHub tokens for private sources.
+Docker socket and a persistent `~/.ssh` volume for GitHub SSH keys.
 
-This is only source. `docker compose` identity is the `name:` in each
+Put a read key for `baycat`, `meowcore-rust`, and `releases` at
+`id_ed25519` in that volume **before** the first start. The entrypoint clones
+those three into the persistent `~/.mhome` volume if they are missing. Image
+build does not clone: the key is not in the build. Workflows never clone;
+they only `git fetch` tags into worktrees.
 
 This is only source. `docker compose` identity is the `name:` in each
 `compose.yaml`. Already-running containers and their volumes stay put when
-these files change. On a new machine, clone this repo and start a new pair of
-containers there; do not share `.env` or volumes across machines.
+these files change. Rebuild with `./compose.sh up -d --build` after recipe
+edits. On a new machine, clone this repo and start a new pair of containers
+there; do not share `.env` or volumes across machines.
 
 `.env` is gitignored and only contains `RUNNER_TOKEN`. Org URL, runner name,
 and labels are hardcoded. The token is only needed the first time a Docker

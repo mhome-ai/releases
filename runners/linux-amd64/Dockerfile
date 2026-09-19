@@ -77,7 +77,8 @@ RUN useradd --create-home --uid 1001 --shell /bin/bash runner \
     && echo 'runner ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/runner \
     && chmod 440 /etc/sudoers.d/runner
 
-COPY --chmod=755 entrypoint.sh /usr/local/bin/linux-amd64-runner-entrypoint.sh
+COPY --chmod=755 linux-amd64/entrypoint.sh /usr/local/bin/linux-amd64-runner-entrypoint.sh
+COPY --chmod=755 ensure-mhome-sources.sh /usr/local/bin/ensure-mhome-sources.sh
 
 USER runner
 WORKDIR /home/runner

@@ -129,6 +129,33 @@ test("install.mhome.ai URL and bucket are pinned; role ARNs come from org vars",
   assert.doesNotMatch(yaml, /DOCKER_DISTRIBUTION_BUCKET/);
 });
 
+test("linux runner entrypoints clone ~/.mhome sources at start", () => {
+  const script = read("runners/ensure-mhome-sources.sh");
+  assert.match(script, /git clone/);
+  assert.match(script, /baycat/);
+  assert.match(script, /meowcore-rust/);
+  assert.match(script, /releases/);
+  assert.doesNotMatch(script, /pallas-cat/);
+  for (const file of [
+    "runners/linux-arm64/entrypoint.sh",
+    "runners/linux-amd64/entrypoint.sh",
+  ]) {
+    assert.match(read(file), /ensure-mhome-sources\.sh/, file);
+  }
+  for (const file of [
+    "runners/linux-arm64/Dockerfile",
+    "runners/linux-amd64/Dockerfile",
+  ]) {
+    assert.match(read(file), /ensure-mhome-sources\.sh/, file);
+  }
+  for (const file of [
+    "runners/linux-arm64/compose.yaml",
+    "runners/linux-amd64/compose.yaml",
+  ]) {
+    assert.match(read(file), /context: \.\./, file);
+  }
+});
+
 test("run.sh refuses a tag that does not match this runner", () => {
   const text = read("scripts/ci/run.sh");
   assert.match(text, /PRODUCT_CHANNEL" = "\$CHANNEL"/);

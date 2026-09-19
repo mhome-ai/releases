@@ -37,15 +37,10 @@ and SSH that can fetch GitHub. Pack scripts stay in the product trees.
 
 Linux native and Docker builds use the recipes in `runners/`. Each container
 has a persistent `~/.mhome` volume, a deploy-key volume at `~/.ssh`, and the
-host Docker socket. Provision clones and the deploy key **on the runner**,
-then start compose. Org URL, runner name, and labels are fixed.
+host Docker socket. Put a GitHub SSH read key in the `runner-ssh` volume
+before the first start. The entrypoint clones `baycat`, `meowcore-rust`, and
+`releases` into `~/.mhome` if they are missing. Org URL, runner name, and
+labels are fixed.
 
-```bash
-# once per machine, inside the runner volume
-git clone git@github.com:mhome-ai/baycat.git ~/.mhome/baycat
-git clone git@github.com:mhome-ai/meowcore-rust.git ~/.mhome/meowcore-rust
-git clone git@github.com:mhome-ai/releases.git ~/.mhome/releases
-# Desktop also needs pallas-cat; E2E needs harness
-```
-
-Composing an edit does not recreate already-running containers.
+Composing an edit does not recreate already-running containers. Rebuild with
+`./compose.sh up -d --build` after changing these recipes.
