@@ -14,20 +14,11 @@ require_mhome_clone pallas-cat
 require_mhome_clone releases
 require_cmd git node cargo gh
 
-LOCK_NAME=""
-if [ "$PRODUCT_PREFIX" = "am" ]; then
-  LOCK_NAME="macos-primary"
-  bash "$CI_ROOT/machine-lock.sh" acquire "$LOCK_NAME"
-fi
-
 cleanup() {
   if [ "${SIGNING_KEYCHAIN:-}" = "1" ]; then
     bash "$CI_ROOT/macos-signing-keychain.sh" release desktop || true
   fi
   cleanup_worktree || echo "::warning::release worktree cleanup failed for $WORK_ROOT"
-  if [ -n "$LOCK_NAME" ]; then
-    bash "$CI_ROOT/machine-lock.sh" release "$LOCK_NAME" || true
-  fi
 }
 trap cleanup EXIT
 

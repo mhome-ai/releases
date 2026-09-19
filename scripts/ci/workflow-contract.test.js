@@ -81,7 +81,7 @@ test("docker release is a complete per-platform product", () => {
   assert.doesNotMatch(script, /require_cmd gh/);
 });
 
-test("mac native ARM and Intel share one Mac Mini lock", () => {
+test("mac native ARM and Intel share the Mac Mini runner", () => {
   for (const file of [
     ".github/workflows/native-macos-arm64.yaml",
     ".github/workflows/native-macos-x64.yaml",
@@ -96,6 +96,12 @@ test("mac native ARM and Intel share one Mac Mini lock", () => {
     fs.existsSync(path.join(ROOT, ".github/workflows/native-macos.yaml")),
     false
   );
+});
+
+test("release scripts do not take a filesystem machine lock", () => {
+  assert.equal(fs.existsSync(path.join(ROOT, "scripts/ci/machine-lock.sh")), false);
+  assert.doesNotMatch(read("scripts/ci/native-release.sh"), /machine-lock|macos-primary|LOCK_NAME/);
+  assert.doesNotMatch(read("scripts/ci/desktop-release.sh"), /machine-lock|macos-primary|LOCK_NAME/);
 });
 
 test("linux native, docker, and install share one Docker host lock", () => {
