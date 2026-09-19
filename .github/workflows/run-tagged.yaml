@@ -62,6 +62,9 @@ jobs:
           DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64: ${{ inputs.channel == 'docker' && secrets.DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64 || '' }}
         run: |
           set -euo pipefail
+          if [ "$(uname -s)" = Darwin ]; then
+            export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+          fi
           mhome="${MHOME_ROOT:-$HOME/.mhome}"
           releases="$mhome/releases"
           tag="${RELEASE_TAG:?}"

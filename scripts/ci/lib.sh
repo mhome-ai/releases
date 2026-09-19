@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# GitHub Actions sets LANG=C.UTF-8 on every runner. That name is a glibc
+# locale. macOS does not ship it, so BSD tar, Apple perl (/usr/bin/shasum),
+# and git abort when they try to set LC_CTYPE to C.UTF-8.
+if [ "$(uname -s)" = Darwin ]; then
+  export LANG=en_US.UTF-8
+  export LC_ALL=en_US.UTF-8
+fi
+
 CI_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MHOME="${MHOME_ROOT:-$HOME/.mhome}"
 WORK_ID="${WORK_ID:-${GITHUB_RUN_ID:-local}-${GITHUB_JOB:-shell}-${GITHUB_RUN_ATTEMPT:-1}}"
