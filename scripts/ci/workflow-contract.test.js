@@ -99,6 +99,25 @@ test("install workflow dispatches from current orchestrator SHA", () => {
   assert.equal(text.includes("orchestrator_ref: ${{ github.sha }}"), true);
 });
 
+test("native catalog fetch retries transport errors; dispatch uses current orchestrator", () => {
+  const script = read("scripts/ci/native-release.sh");
+  assert.match(script, /--retry 8/);
+  assert.match(script, /--retry-all-errors/);
+  for (const file of [
+    ".github/workflows/native-linux-arm64.yaml",
+    ".github/workflows/native-linux-amd64.yaml",
+    ".github/workflows/native-macos.yaml",
+    ".github/workflows/native-windows.yaml",
+  ]) {
+    const text = read(file);
+    assert.match(
+      text,
+      /orchestrator_ref: \$\{\{ github\.event_name == 'workflow_dispatch' && github\.sha \|\| '' \}\}/,
+      file
+    );
+  }
+});
+
 test("tagged orchestrator is taken from ~/.mhome/releases", () => {
   const text = read(".github/workflows/run-tagged.yaml");
   assert.match(text, /\$HOME\/\.mhome/);

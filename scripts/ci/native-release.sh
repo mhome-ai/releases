@@ -75,8 +75,11 @@ catalog_url="$(node scripts/release/native/runtime-catalog-config.js catalog-url
 signature_url="$(node scripts/release/native/runtime-catalog-config.js signature-url "$PRODUCT_PLATFORM")"
 fetch_status() {
   local url="$1" output="$2" status
-  status="$(curl --location --silent --show-error --output "$output" --write-out '%{http_code}' "$url")" || {
-    echo "::error::Failed to fetch $url" >&2
+  status="$(curl --location --silent --show-error \
+    --retry 8 --retry-all-errors --retry-delay 2 --retry-max-time 90 \
+    --connect-timeout 15 \
+    --output "$output" --write-out '%{http_code}' "$url")" || {
+    echo "::error::Failed to fetch $url after retries" >&2
     exit 1
   }
   printf '%s' "$status"
