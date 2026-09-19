@@ -50,6 +50,7 @@ test("each product workflow is one job that calls run-tagged.yaml", () => {
   for (const file of files) {
     const text = read(file);
     assert.match(text, /uses: \.\/\.github\/workflows\/run-tagged\.yaml/, file);
+    assert.match(text, /^\s+packages: write$/m, file);
     assert.doesNotMatch(text, /^\s+if:/m, file);
     assert.doesNotMatch(text, /^\s+environment:/m, file);
     assert.doesNotMatch(text, /worktree add --detach/, file);
