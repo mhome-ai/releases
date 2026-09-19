@@ -42,12 +42,12 @@ verify_macos_runtime_catalog() {
   local directory
   directory="$(mktemp -d "${TMPDIR:-/tmp}/meowlink-desktop-preflight.XXXXXX")"
   curl -fsSL --retry 3 --proto '=https' --tlsv1.2 \
-    "$(node scripts/release/native/runtime-catalog-config.js catalog-url macos)" \
+    "$(node scripts/release/native/runtime-catalog-config.js catalog-url darwin-arm64)" \
     -o "$directory/catalog.json"
   curl -fsSL --retry 3 --proto '=https' --tlsv1.2 \
-    "$(node scripts/release/native/runtime-catalog-config.js signature-url macos)" \
+    "$(node scripts/release/native/runtime-catalog-config.js signature-url darwin-arm64)" \
     -o "$directory/catalog.json.minisig"
-  node scripts/release/native/runtime-catalog-config.js public-key-file macos \
+  node scripts/release/native/runtime-catalog-config.js public-key-file darwin-arm64 \
     > "$directory/catalog.pub"
   cargo run --profile local-package --quiet -p runtime-release-verify --bin runtime-release-verify -- \
     --catalog "$directory/catalog.json" \

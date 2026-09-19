@@ -1,0 +1,36 @@
+name: Release native macos-arm64
+
+on:
+  push:
+    tags:
+      - "nmr[0-9]*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Product tag, for example nmr1.2.3"
+        required: true
+        type: string
+      initialize_catalog:
+        description: "Initialize a missing platform Stable Catalog"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+  packages: write
+
+jobs:
+  run:
+    uses: ./.github/workflows/run-tagged.yaml
+    concurrency:
+      group: native-runtime-stable-macos
+      cancel-in-progress: false
+    with:
+      runner_labels: '["self-hosted","macOS","ARM64","release-macos-primary"]'
+      channel: native
+      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      initialize_catalog: ${{ github.event_name == 'workflow_dispatch' && inputs.initialize_catalog || false }}
+      orchestrator_ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || '' }}
+      work_suffix: darwin-arm64
+    secrets: inherit

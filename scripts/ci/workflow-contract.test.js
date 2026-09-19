@@ -81,6 +81,23 @@ test("docker release is a complete per-platform product", () => {
   assert.doesNotMatch(script, /require_cmd gh/);
 });
 
+test("mac native ARM and Intel share one Mac Mini lock", () => {
+  for (const file of [
+    ".github/workflows/native-macos-arm64.yaml",
+    ".github/workflows/native-macos-x64.yaml",
+  ]) {
+    const text = read(file);
+    assert.match(text, /group: native-runtime-stable-macos/, file);
+    assert.match(text, /release-macos-primary/, file);
+  }
+  assert.match(read(".github/workflows/native-macos-arm64.yaml"), /nmr\[0-9\]\*/);
+  assert.match(read(".github/workflows/native-macos-x64.yaml"), /nmd\[0-9\]\*/);
+  assert.equal(
+    fs.existsSync(path.join(ROOT, ".github/workflows/native-macos.yaml")),
+    false
+  );
+});
+
 test("linux native, docker, and install share one Docker host lock", () => {
   for (const file of [
     ".github/workflows/native-linux-arm64.yaml",
@@ -106,7 +123,8 @@ test("native catalog fetch retries transport errors; dispatch uses current orche
   for (const file of [
     ".github/workflows/native-linux-arm64.yaml",
     ".github/workflows/native-linux-amd64.yaml",
-    ".github/workflows/native-macos.yaml",
+    ".github/workflows/native-macos-arm64.yaml",
+    ".github/workflows/native-macos-x64.yaml",
     ".github/workflows/native-windows.yaml",
   ]) {
     const text = read(file);

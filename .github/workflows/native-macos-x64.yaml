@@ -1,13 +1,13 @@
-name: Release native macos
+name: Release native macos-x64
 
 on:
   push:
     tags:
-      - "nm[0-9]*"
+      - "nmd[0-9]*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Product tag, for example nm1.2.3"
+        description: "Product tag, for example nmd1.2.3"
         required: true
         type: string
       initialize_catalog:
@@ -32,5 +32,5 @@ jobs:
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       initialize_catalog: ${{ github.event_name == 'workflow_dispatch' && inputs.initialize_catalog || false }}
       orchestrator_ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || '' }}
-      work_suffix: macos
+      work_suffix: darwin-x64
     secrets: inherit

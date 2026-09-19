@@ -14,7 +14,7 @@ require_mhome_clone releases
 require_cmd git node cargo gh curl minisign
 
 LOCK_NAME=""
-if [ "$PRODUCT_PLATFORM" = "macos" ]; then
+if [ "$PRODUCT_PLATFORM" = "darwin-arm64" ] || [ "$PRODUCT_PLATFORM" = "darwin-x64" ]; then
   LOCK_NAME="macos-primary"
   bash "$CI_ROOT/machine-lock.sh" acquire "$LOCK_NAME"
 fi
@@ -34,16 +34,18 @@ prepare_product_sources --with-meowcore --baycat-version-mode match
 cd "$BAYCAT_DIR"
 
 case "$PRODUCT_PLATFORM" in
-  macos)
+  darwin-arm64|darwin-x64)
+    rust_target="aarch64-apple-darwin"
+    [ "$PRODUCT_PLATFORM" = "darwin-x64" ] && rust_target="x86_64-apple-darwin"
     require_cmd codesign security cc
     bash scripts/release/native/quality-gate.sh
     SIGNING_KEYCHAIN=1
     bash "$CI_ROOT/macos-signing-keychain.sh" acquire native-runtime
     bash scripts/release/mac/check-mac-runner.sh --skip-rust
     bash scripts/release/native/package-macos-runtime.sh \
-      darwin-arm64 aarch64-apple-darwin \
-      "build/native-runtime/darwin-arm64"
-    assets_dir="build/native-runtime/darwin-arm64"
+      "$PRODUCT_PLATFORM" "$rust_target" \
+      "build/native-runtime/${PRODUCT_PLATFORM}"
+    assets_dir="build/native-runtime/${PRODUCT_PLATFORM}"
     ;;
   linux-arm64|linux-amd64)
     rust_target="aarch64-unknown-linux-gnu"
@@ -169,7 +171,7 @@ node scripts/release/native/verify-github-release-assets.js \
 node scripts/release/native/runtime-catalog-config.js public-key-file \
   > build/runtime-release-verify/catalog.pub
 case "$PRODUCT_PLATFORM" in
-  macos)
+  darwin-arm64|darwin-x64)
     cargo run --profile local-package --quiet -p runtime-release-verify --bin runtime-release-verify -- \
       --catalog build/runtime-release-verify/catalog.json \
       --signature build/runtime-release-verify/catalog.json.minisig \
