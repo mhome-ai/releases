@@ -134,21 +134,25 @@ while IFS= read -r file_name; do
 done < build/runtime-catalog/publish-assets.txt
 
 [ -n "${GH_TOKEN:-}" ] || fail "GH_TOKEN is required to publish"
-if gh release view "$PRODUCT_RELEASE_TAG" --repo "$repo" >/dev/null 2>&1; then
-  is_draft="$(gh release view "$PRODUCT_RELEASE_TAG" --repo "$repo" --json isDraft --jq .isDraft)"
-  if [ "$is_draft" = "true" ]; then
-    gh release upload "$PRODUCT_RELEASE_TAG" --repo "$repo" --clobber "${release_files[@]}"
-  else
-    echo "Release $PRODUCT_RELEASE_TAG is already public; assets will be verified but never modified."
-  fi
-else
+# GitHub's release create/upload of many large archives in one call races:
+# completed catalog files plus sibling tar.gz left in "starter" state, then
+# uploads.github.com returns HTTP 400. Create an empty draft, then replace one
+# asset at a time.
+if ! gh release view "$PRODUCT_RELEASE_TAG" --repo "$repo" >/dev/null 2>&1; then
   gh release create "$PRODUCT_RELEASE_TAG" \
     --repo "$repo" \
     --draft \
     --latest=false \
     --title "MeowLink Runtime ${PRODUCT_VERSION}" \
-    --notes "Native MeowLink runtime ${PRODUCT_VERSION}" \
-    "${release_files[@]}"
+    --notes "Native MeowLink runtime ${PRODUCT_VERSION}"
+fi
+is_draft="$(gh release view "$PRODUCT_RELEASE_TAG" --repo "$repo" --json isDraft --jq .isDraft)"
+if [ "$is_draft" = "true" ]; then
+  for file in "${release_files[@]}"; do
+    gh release upload "$PRODUCT_RELEASE_TAG" --repo "$repo" --clobber "$file"
+  done
+else
+  echo "Release $PRODUCT_RELEASE_TAG is already public; assets will be verified but never modified."
 fi
 
 cp build/runtime-catalog/catalog.json build/runtime-catalog/catalog.json.minisig \
