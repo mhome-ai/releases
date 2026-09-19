@@ -17,7 +17,7 @@ test("parses independent native platform tags", () => {
   });
   assert.equal(resolveProductTag("refs/tags/nlx0.9.27").platform, "linux-amd64");
   assert.equal(resolveProductTag("nmr1.0.0").platform, "darwin-arm64");
-  assert.equal(resolveProductTag("nmd1.0.0").platform, "darwin-x64");
+  assert.equal(resolveProductTag("nmx1.0.0").platform, "darwin-x64");
   assert.equal(resolveProductTag("nw1.0.0").platform, "windows");
 });
 
@@ -44,6 +44,7 @@ test("rejects unknown tags", () => {
   assert.throws(() => resolveProductTag("v1.2.3"), /Invalid product release tag/);
   assert.throws(() => resolveProductTag("nl1.2.3"), /Invalid product release tag/);
   assert.throws(() => resolveProductTag("nm1.2.3"), /Invalid product release tag/);
+  assert.throws(() => resolveProductTag("nmd1.2.3"), /Invalid product release tag/);
   assert.throws(() => resolveProductTag("n1.2.3"), /Invalid product release tag/);
   assert.throws(() => resolveProductTag("a1.2.3"), /Invalid product release tag/);
   assert.throws(() => resolveProductTag("d1.2.3"), /Invalid product release tag/);

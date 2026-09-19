@@ -3,11 +3,11 @@ name: Release native macos-x64
 on:
   push:
     tags:
-      - "nmd[0-9]*"
+      - "nmx[0-9]*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Product tag, for example nmd1.2.3"
+        description: "Product tag, for example nmx1.2.3"
         required: true
         type: string
       initialize_catalog:

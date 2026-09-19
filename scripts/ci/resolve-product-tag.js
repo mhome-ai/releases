@@ -7,7 +7,7 @@ const NATIVE_PREFIXES = {
   nlr: "linux-arm64",
   nlx: "linux-amd64",
   nmr: "darwin-arm64",
-  nmd: "darwin-x64",
+  nmx: "darwin-x64",
   nw: "windows",
 };
 
@@ -28,7 +28,7 @@ function stripRef(ref) {
 
 function resolveProductTag(ref) {
   const tag = stripRef(ref);
-  const native = /^(nlr|nlx|nmr|nmd|nw)(\d+\.\d+\.\d+)$/.exec(tag);
+  const native = /^(nlr|nlx|nmr|nmx|nw)(\d+\.\d+\.\d+)$/.exec(tag);
   if (native) {
     const version = native[2];
     return {

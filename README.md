@@ -10,15 +10,15 @@ repository. This git tree is the release orchestrator only.
    tag, recorded in baycat `release/sources/dependencies.json`. This does not
    publish.
 2. Later, push a product tag on **this** repo: `am1.2.3`, `nlr1.2.3`,
-   `nlx1.2.3`, `nmr1.2.3`, `nmd1.2.3`, `dlr1.2.3`.
+   `nlx1.2.3`, `nmr1.2.3`, `nmx1.2.3`, `dlr1.2.3`.
 3. The matching workflow file (one tag prefix, one job, one runner) runs
    `scripts/ci/run.sh` from a worktree of this repo. That script fetches the
    product source tags into sibling worktrees under `~/.mhome/work/<id>/` and
    runs the pack scripts in the product tree. Canonical checkouts at
    `~/.mhome/<repo>` stay on their default branches for Harness.
 
-One workflow run is one machine. Native `nlr`/`nlx`/`nmr`/`nmd`/`nw`, Desktop
-`am`/`aw`, Docker `dlr`/`dlx`. Mac native ARM (`nmr`) and Intel (`nmd`) share
+One workflow run is one machine. Native `nlr`/`nlx`/`nmr`/`nmx`/`nw`, Desktop
+`am`/`aw`, Docker `dlr`/`dlx`. Mac native ARM (`nmr`) and Intel (`nmx`) share
 the Mac Mini and the `native-runtime-stable-macos` lock, so they queue. GitHub Latest for Desktop still lives on the
 asset tag `aX.Y.Z`; `am` and `aw` both publish onto that tag and share the
 `desktop-release` concurrency group. Docker Catalog is per platform:

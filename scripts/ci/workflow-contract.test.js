@@ -91,7 +91,7 @@ test("mac native ARM and Intel share the Mac Mini runner", () => {
     assert.match(text, /release-macos-primary/, file);
   }
   assert.match(read(".github/workflows/native-macos-arm64.yaml"), /nmr\[0-9\]\*/);
-  assert.match(read(".github/workflows/native-macos-x64.yaml"), /nmd\[0-9\]\*/);
+  assert.match(read(".github/workflows/native-macos-x64.yaml"), /nmx\[0-9\]\*/);
   assert.equal(
     fs.existsSync(path.join(ROOT, ".github/workflows/native-macos.yaml")),
     false
