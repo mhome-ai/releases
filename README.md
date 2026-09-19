@@ -24,6 +24,12 @@ asset tag `aX.Y.Z`; `am` and `aw` both publish onto that tag and share the
 `docker/stable/linux-arm64/` and `docker/stable/linux-amd64/`. `dlr` and `dlx`
 do not wait for each other.
 
+Every product job binds a GitHub Environment in `run-tagged.yaml`:
+`native-runtime-release`, `docker-release`, `native-install`, `desktop-release`.
+Desktop signing secrets stay repo/org-level; `desktop-release` exists so the
+job does not need a second copy of the bootstrap. Do not reuse a native or
+Docker environment for Desktop.
+
 Workflows never `git clone` and never `actions/checkout` product sources.
 Runners must already have `~/.mhome/{baycat,meowcore-rust,pallas-cat,releases,harness}`
 and SSH that can fetch GitHub. Pack scripts stay in the product trees.

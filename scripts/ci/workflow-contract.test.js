@@ -57,11 +57,24 @@ test("each product workflow is one job that calls run-tagged.yaml", () => {
   }
 });
 
-test("OIDC environments are applied inside run-tagged.yaml", () => {
+test("every product workflow names a GitHub Environment for the inner job", () => {
   const text = read(".github/workflows/run-tagged.yaml");
-  assert.match(text, /github_environment:/);
+  assert.match(text, /github_environment:\n\s+required: true/);
   assert.equal(text.includes("environment: ${{ inputs.github_environment }}"), true);
-  assert.equal(text.includes("if: ${{ inputs.github_environment != '' }}"), true);
+  assert.doesNotMatch(text, /run_open:/);
+  assert.doesNotMatch(text, /^\s+if:/m);
+  for (const file of productWorkflows()) {
+    const caller = read(file);
+    assert.match(caller, /github_environment:/, file);
+  }
+  assert.match(
+    read(".github/workflows/desktop-macos.yaml"),
+    /github_environment: desktop-release/
+  );
+  assert.match(
+    read(".github/workflows/desktop-windows.yaml"),
+    /github_environment: desktop-release/
+  );
 });
 
 test("docker release is a complete per-platform product", () => {
