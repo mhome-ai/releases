@@ -43,28 +43,23 @@ jobs:
           WORK_SUFFIX: ${{ inputs.work_suffix }}
           INITIALIZE_CATALOG: ${{ inputs.initialize_catalog }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUNTIME_CATALOG_PRIVATE_KEY_B64: ${{ inputs.channel == 'native' && secrets.RUNTIME_CATALOG_PRIVATE_KEY_B64 || '' }}
-          RUNTIME_CATALOG_BUCKET: ${{ inputs.channel == 'native' && secrets.RUNTIME_CATALOG_BUCKET || '' }}
           RUNTIME_PUBLISH_ROLE_ARN: ${{ (inputs.channel == 'native' || inputs.channel == 'install') && vars.RUNTIME_PUBLISH_ROLE_ARN || '' }}
-          AWS_REGION: ${{ (inputs.channel == 'native' || inputs.channel == 'docker' || inputs.channel == 'install') && (vars.AWS_REGION || 'us-east-1') || '' }}
+          DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'docker' && vars.DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN || '' }}
+          NATIVE_INSTALL_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'install' && vars.NATIVE_INSTALL_PUBLISH_ROLE_ARN || '' }}
+          APPLE_TEAM_ID: ${{ inputs.channel == 'desktop' && vars.APPLE_TEAM_ID || '' }}
+          RUNTIME_CATALOG_PRIVATE_KEY_B64: ${{ inputs.channel == 'native' && secrets.RUNTIME_CATALOG_PRIVATE_KEY_B64 || '' }}
           APPLE_CSC_LINK: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.APPLE_CSC_LINK || '' }}
           APPLE_CSC_KEY_PASSWORD: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.APPLE_CSC_KEY_PASSWORD || '' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.channel == 'desktop' && secrets.UPDATER_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.channel == 'desktop' && secrets.UPDATER_PRIVATE_KEY_PASSWORD || '' }}
           APPLE_ID: ${{ inputs.channel == 'desktop' && secrets.APPLE_ID || '' }}
           APPLE_ID_PASSWORD: ${{ inputs.channel == 'desktop' && secrets.APPLE_ID_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ inputs.channel == 'desktop' && secrets.APPLE_TEAM_ID || '' }}
           SSL_COM_USERNAME: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_USERNAME || '' }}
           SSL_COM_PASSWORD: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_PASSWORD || '' }}
           SSL_COM_CREDENTIAL_ID: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_CREDENTIAL_ID || '' }}
           SSL_COM_TOTP_SECRET: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_TOTP_SECRET || '' }}
-          DOCKER_DISTRIBUTION_BASE_URL: ${{ inputs.channel == 'docker' && vars.DOCKER_DISTRIBUTION_BASE_URL || '' }}
-          DOCKER_DISTRIBUTION_BUCKET: ${{ inputs.channel == 'docker' && vars.DOCKER_DISTRIBUTION_BUCKET || '' }}
-          DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'docker' && vars.DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN || '' }}
           DOCKER_CATALOG_PRIMARY_PRIVATE_KEY_B64: ${{ inputs.channel == 'docker' && secrets.DOCKER_CATALOG_PRIMARY_PRIVATE_KEY_B64 || '' }}
           DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64: ${{ inputs.channel == 'docker' && secrets.DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64 || '' }}
-          NATIVE_INSTALL_SCRIPT_BUCKET: ${{ inputs.channel == 'install' && vars.NATIVE_INSTALL_SCRIPT_BUCKET || '' }}
-          NATIVE_INSTALL_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'install' && vars.NATIVE_INSTALL_PUBLISH_ROLE_ARN || '' }}
         run: |
           set -euo pipefail
           mhome="${MHOME_ROOT:-$HOME/.mhome}"

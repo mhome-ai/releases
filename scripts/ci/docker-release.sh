@@ -11,9 +11,7 @@ require_mhome_clone baycat
 require_mhome_clone meowcore-rust
 require_mhome_clone releases
 require_cmd git node cargo curl docker minisign aws
-[ -n "${DOCKER_DISTRIBUTION_BASE_URL:-}" ] || fail "Missing DOCKER_DISTRIBUTION_BASE_URL"
-[ -n "${DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN:-}" ] || fail "Missing DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN"
-[ -n "${DOCKER_DISTRIBUTION_BUCKET:-}" ] || fail "Missing DOCKER_DISTRIBUTION_BUCKET"
+[ -n "${DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN:-}" ] || fail "Missing org variable DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN"
 
 platform="$PRODUCT_PLATFORM"
 case "$platform" in

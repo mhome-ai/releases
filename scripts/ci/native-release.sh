@@ -193,8 +193,7 @@ case "$PRODUCT_PLATFORM" in
     ;;
 esac
 
-[ -n "${RUNTIME_PUBLISH_ROLE_ARN:-}" ] || fail "Missing RUNTIME_PUBLISH_ROLE_ARN"
-[ -n "${RUNTIME_CATALOG_BUCKET:-}" ] || fail "Missing RUNTIME_CATALOG_BUCKET"
+[ -n "${RUNTIME_PUBLISH_ROLE_ARN:-}" ] || fail "Missing org variable RUNTIME_PUBLISH_ROLE_ARN"
 assume_aws_role "$RUNTIME_PUBLISH_ROLE_ARN"
 publish_immutable_s3 \
   build/runtime-catalog/catalog.json \

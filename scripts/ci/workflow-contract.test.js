@@ -107,6 +107,26 @@ test("tagged orchestrator is taken from ~/.mhome/releases", () => {
   assert.match(text, /WORK_SUFFIX/);
   assert.match(text, /inputs\.channel == 'native'/);
   assert.match(text, /inputs\.channel == 'docker'/);
+  assert.match(text, /vars\.RUNTIME_PUBLISH_ROLE_ARN/);
+  assert.match(text, /vars\.DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN/);
+  assert.match(text, /vars\.NATIVE_INSTALL_PUBLISH_ROLE_ARN/);
+  assert.match(text, /vars\.APPLE_TEAM_ID/);
+});
+
+test("install.mhome.ai URL and bucket are pinned; role ARNs come from org vars", () => {
+  const lib = read("scripts/ci/lib.sh");
+  assert.match(lib, /https:\/\/install\.mhome\.ai/);
+  assert.match(lib, /mhome-install-distribution/);
+  assert.doesNotMatch(lib, /arn:aws:iam::/);
+  assert.doesNotMatch(lib, /APPLE_TEAM_ID=/);
+  const yaml = read(".github/workflows/run-tagged.yaml");
+  assert.match(yaml, /vars\.RUNTIME_PUBLISH_ROLE_ARN/);
+  assert.match(yaml, /vars\.DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN/);
+  assert.match(yaml, /vars\.NATIVE_INSTALL_PUBLISH_ROLE_ARN/);
+  assert.match(yaml, /vars\.APPLE_TEAM_ID/);
+  assert.doesNotMatch(yaml, /vars\.AWS_REGION/);
+  assert.doesNotMatch(yaml, /RUNTIME_CATALOG_BUCKET/);
+  assert.doesNotMatch(yaml, /DOCKER_DISTRIBUTION_BUCKET/);
 });
 
 test("run.sh refuses a tag that does not match this runner", () => {

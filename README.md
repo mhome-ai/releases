@@ -24,9 +24,10 @@ asset tag `aX.Y.Z`; `am` and `aw` both publish onto that tag and share the
 `docker/stable/linux-arm64/` and `docker/stable/linux-amd64/`. `dlr` and `dlx`
 do not wait for each other.
 
-Secrets and variables live on the `mhome-ai/releases` repository (or org).
-Workflows do not use GitHub Environments. AWS OIDC trusts any job that runs
-`run-tagged.yaml` in this repo.
+Signing keys are repository or org Secrets. `APPLE_TEAM_ID` and the three
+publisher role ARNs are org Variables, visible to this public repo. Bucket
+name and `https://install.mhome.ai` stay in `scripts/ci/lib.sh`. Workflows
+do not use GitHub Environments.
 
 Workflows never `git clone` and never `actions/checkout` product sources.
 Runners must already have `~/.mhome/{baycat,meowcore-rust,pallas-cat,releases,harness}`
