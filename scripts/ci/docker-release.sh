@@ -19,7 +19,7 @@ case "$platform" in
     docker_platform="linux/arm64"
     sibling_docker_platform="linux/amd64"
     ;;
-  linux-amd64)
+  linux-x64)
     docker_platform="linux/amd64"
     sibling_docker_platform="linux/arm64"
     ;;

@@ -38,9 +38,9 @@ case "$PRODUCT_PLATFORM" in
       "build/native-runtime/${PRODUCT_PLATFORM}"
     assets_dir="build/native-runtime/${PRODUCT_PLATFORM}"
     ;;
-  linux-arm64|linux-amd64)
+  linux-arm64|linux-x64)
     rust_target="aarch64-unknown-linux-gnu"
-    [ "$PRODUCT_PLATFORM" = "linux-amd64" ] && rust_target="x86_64-unknown-linux-gnu"
+    [ "$PRODUCT_PLATFORM" = "linux-x64" ] && rust_target="x86_64-unknown-linux-gnu"
     cargo test --profile local-package -p runtime-release-verify
     cargo test --profile local-package -p client
     bash scripts/release/native/package-linux-runtime.sh \
@@ -180,7 +180,7 @@ case "$PRODUCT_PLATFORM" in
       build/runtime-release-verify/catalog.json.minisig \
       build/runtime-release-verify/catalog.pub
     ;;
-  linux-arm64|linux-amd64)
+  linux-arm64|linux-x64)
     bash scripts/release/native/verify-linux-runtime-release.sh \
       build/runtime-release-verify \
       build/runtime-release-verify/catalog.json \

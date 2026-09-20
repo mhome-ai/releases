@@ -1,7 +1,7 @@
 # Linux amd64 self-hosted runner
 
 Docker template for a long-lived GitHub Actions runner that builds Baycat
-Linux amd64 natives (`linux-amd64` / `x86_64-unknown-linux-gnu`). Matches
+Linux amd64 natives (`linux-x64` / `x86_64-unknown-linux-gnu`). Matches
 GitHub-hosted `ubuntu-24.04`.
 
 The ARM sibling is `../linux-arm64/`. Both containers can stay up at once;

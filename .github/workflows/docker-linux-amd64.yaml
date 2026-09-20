@@ -1,4 +1,4 @@
-name: Release docker linux-amd64
+name: Release docker linux-x64
 
 on:
   push:
@@ -26,5 +26,5 @@ jobs:
       runner_labels: '["self-hosted","Linux","AMD64","release-linux-amd64"]'
       channel: docker
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-      work_suffix: linux-amd64
+      work_suffix: linux-x64
     secrets: inherit

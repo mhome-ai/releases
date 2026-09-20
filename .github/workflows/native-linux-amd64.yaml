@@ -1,4 +1,4 @@
-name: Release native linux-amd64
+name: Release native linux-x64
 
 on:
   push:
@@ -32,5 +32,5 @@ jobs:
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       initialize_catalog: ${{ github.event_name == 'workflow_dispatch' && inputs.initialize_catalog || false }}
       orchestrator_ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || '' }}
-      work_suffix: linux-amd64
+      work_suffix: linux-x64
     secrets: inherit

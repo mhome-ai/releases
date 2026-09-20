@@ -5,7 +5,7 @@ const { productSourceTag } = require("./mhome-root");
 
 const NATIVE_PREFIXES = {
   nlr: "linux-arm64",
-  nlx: "linux-amd64",
+  nlx: "linux-x64",
   nmr: "darwin-arm64",
   nmx: "darwin-x64",
   nw: "windows",
@@ -19,7 +19,7 @@ const DESKTOP_PREFIXES = {
 
 const DOCKER_PREFIXES = {
   dlr: "linux-arm64",
-  dlx: "linux-amd64",
+  dlx: "linux-x64",
 };
 
 function stripRef(ref) {

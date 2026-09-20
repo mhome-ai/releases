@@ -22,7 +22,7 @@ One workflow run is one machine. Native `nlr`/`nlx`/`nmr`/`nmx`/`nw`, Desktop
 the Mac Mini and the `native-runtime-stable-macos` lock, so they queue. GitHub Latest for Desktop still lives on the
 asset tag `aX.Y.Z`; `am` and `aw` both publish onto that tag and share the
 `desktop-release` concurrency group. Docker Catalog is per platform:
-`docker/stable/linux-arm64/` and `docker/stable/linux-amd64/`. `dlr` and `dlx`
+`docker/stable/linux-arm64/` and `docker/stable/linux-x64/`. `dlr` and `dlx`
 do not wait for each other.
 
 Signing keys are repository or org Secrets. `APPLE_TEAM_ID` and the three

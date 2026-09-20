@@ -15,7 +15,7 @@ test("parses independent native platform tags", () => {
     withPallas: false,
     withMeowcore: true,
   });
-  assert.equal(resolveProductTag("refs/tags/nlx0.9.27").platform, "linux-amd64");
+  assert.equal(resolveProductTag("refs/tags/nlx0.9.27").platform, "linux-x64");
   assert.equal(resolveProductTag("nmr1.0.0").platform, "darwin-arm64");
   assert.equal(resolveProductTag("nmx1.0.0").platform, "darwin-x64");
   assert.equal(resolveProductTag("nw1.0.0").platform, "windows");
@@ -31,7 +31,7 @@ test("parses desktop tags onto canonical aX.Y.Z GitHub release", () => {
 test("parses docker tags", () => {
   assert.equal(resolveProductTag("dlr1.2.3").channel, "docker");
   assert.equal(resolveProductTag("dlr1.2.3").platform, "linux-arm64");
-  assert.equal(resolveProductTag("dlx1.2.3").platform, "linux-amd64");
+  assert.equal(resolveProductTag("dlx1.2.3").platform, "linux-x64");
   assert.equal(resolveProductTag("dlr1.2.3").sourceTag, "v1.2.3");
 });
 

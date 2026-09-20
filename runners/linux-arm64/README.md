@@ -67,6 +67,6 @@ runs-on: [self-hosted, Linux, ARM64, release-linux-arm64]
 ```
 
 Tag `nlrX.Y.Z` on `mhome-ai/releases` builds and promotes only this
-architecture. `linux-amd64` uses `nlx` and `release-linux-amd64`. Linux native,
+architecture. `linux-x64` uses `nlx` and `release-linux-amd64`. Linux native,
 Docker, and install jobs share the `linux-docker-host` concurrency group so they
 do not compile on this Docker host at the same time.

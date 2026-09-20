@@ -43,7 +43,7 @@ rustup target add x86_64-unknown-linux-gnu >/dev/null
 
 RUNNER_DIR="$HOME/actions-runner"
 RUNNER_VERSION=2.337.0
-# GitHub publishes this archive as linux-x64; our platform id is linux-amd64.
+# GitHub Actions runner archive name is linux-x64.
 RUNNER_SHA256=70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613
 
 if [ ! -x "$RUNNER_DIR/run.sh" ]; then
