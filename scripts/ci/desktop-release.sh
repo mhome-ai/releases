@@ -10,6 +10,7 @@ read_product_tag "$tag"
 [ "$PRODUCT_CHANNEL" = "desktop" ] || fail "$tag is not a desktop product tag"
 require_mhome_clone baycat
 require_mhome_clone meowcore-rust
+require_mhome_clone agent-rust
 require_mhome_clone pallas-cat
 require_mhome_clone releases
 require_cmd git node cargo gh

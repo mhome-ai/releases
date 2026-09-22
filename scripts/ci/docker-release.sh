@@ -9,6 +9,7 @@ read_product_tag "$tag"
 [ "$PRODUCT_CHANNEL" = "docker" ] || fail "$tag is not a docker product tag"
 require_mhome_clone baycat
 require_mhome_clone meowcore-rust
+require_mhome_clone agent-rust
 require_mhome_clone releases
 require_cmd git node cargo curl docker minisign aws
 [ -n "${DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN:-}" ] || fail "Missing org variable DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN"

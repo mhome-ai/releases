@@ -10,6 +10,7 @@ read_product_tag "$tag"
 [ "$PRODUCT_CHANNEL" = "native" ] || fail "$tag is not a native product tag"
 require_mhome_clone baycat
 require_mhome_clone meowcore-rust
+require_mhome_clone agent-rust
 require_mhome_clone releases
 require_cmd git node cargo gh curl minisign
 
@@ -115,6 +116,7 @@ node scripts/release/native/generate-runtime-catalog.js \
   --meowcore-repository "mhome-ai/meowcore-rust" \
   --meowcore-revision "$meowcore_commit" \
   --meowcore-tag "$meowcore_tag" \
+  --agent-revision "$(node -p 'require("../meowcore-rust/release/sources/agent.json").commit')" \
   --assets-dir build/native-runtime-assets \
   --runtime-alternatives true \
   --output build/runtime-catalog/catalog.json \

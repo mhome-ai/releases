@@ -185,6 +185,7 @@ function verifyProductPins({
 }
 
 function writeProvenance({
+  agentSource,
   version,
   baycatDir,
   pallasDir,
@@ -208,6 +209,7 @@ function writeProvenance({
   const payload = {
     schemaVersion: 1,
     kind: "meow.release-source-provenance",
+    agentRust: agentSource,
     version,
     workId,
     workflowRun: workflowRunUrl || null,
@@ -295,7 +297,9 @@ function prepareReleaseSources({
   if (meowcoreDir) {
     verifyFoundationPins(baycatDir, meowcoreDir);
   }
+  const agentSource = meowcoreDir ? prepareAgentSource({ consumerDir: meowcoreDir, workRoot, home }) : null;
   const provenance = writeProvenance({
+    agentSource,
     version,
     baycatDir,
     pallasDir: pallasDir || undefined,
@@ -310,6 +314,8 @@ function prepareReleaseSources({
     baycat_dir: baycatDir,
     baycat_revision: provenance.baycat.revision,
     meowcore_dir: meowcoreDir || "",
+    agent_dir: agentSource?.directory || "",
+    agent_revision: agentSource?.revision || "",
     pallas_dir: pallasDir || "",
     source_tag: sourceTag,
     mhome_root: mhomeRoot(home),
@@ -331,6 +337,27 @@ function verifyFoundationPins(baycatDir, meowcoreDir) {
       (result.stderr || result.stdout || "Foundation crate pin check failed").trim()
     );
   }
+}
+
+
+function prepareAgentSource({ consumerDir, workRoot, home }) {
+  const file = path.join(consumerDir, "release/sources/agent.json");
+  const pin = JSON.parse(fs.readFileSync(file, "utf8"));
+  if (pin.schemaVersion !== 1 || pin.repository !== "mhome-ai/agent" || !/^[0-9a-f]{40}$/.test(pin.commit || "") || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(pin.version || "")) {
+    fail("Invalid Agent source pin in " + file);
+  }
+  const clone = canonicalClonePath("agent-rust", home);
+  requireExistingClone({ name: "agent-rust", repository: pin.repository }, clone);
+  // Fetch precisely the pinned source; never build an ambient main checkout.
+  git(clone, ["fetch", "origin", pin.commit]);
+  const commit = git(clone, ["rev-parse", `${pin.commit}^{commit}`]);
+  if (commit !== pin.commit) fail("Agent source revision does not match its pin");
+  const directory = path.join(workRoot, "agent-rust");
+  addDetachedWorktree(clone, directory, pin.commit);
+  const manifest = fs.readFileSync(path.join(directory, "Cargo.toml"), "utf8");
+  if (manifest.match(/^version\s*=\s*"([^"]+)"/m)?.[1] !== pin.version) fail("Agent source version does not match its pin");
+  requireCleanWorktree("agent-rust", directory);
+  return { directory, repository: pin.repository, version: pin.version, revision: commit };
 }
 
 function printOutputs(outputs) {
@@ -383,6 +410,7 @@ module.exports = {
   fetchTag,
   prepareReleaseSources,
   printOutputs,
+  prepareAgentSource,
   readMeowcorePin,
   requireExistingClone,
 };

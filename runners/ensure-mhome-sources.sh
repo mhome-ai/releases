@@ -24,7 +24,7 @@ elif [ -f "$HOME/.ssh/id_rsa" ]; then
   key="$HOME/.ssh/id_rsa"
 else
   echo "runner is missing a GitHub SSH key at $HOME/.ssh/id_ed25519" >&2
-  echo "put a read key for baycat, meowcore-rust, and releases in the runner-ssh volume" >&2
+  echo "put a read key for baycat, meowcore-rust, agent, and releases in the runner-ssh volume" >&2
   exit 1
 fi
 
@@ -40,10 +40,12 @@ clone_if_missing() {
     echo "runner has $dest but it is not a git clone" >&2
     exit 1
   fi
-  echo "Cloning mhome-ai/$name into $dest"
-  git clone "git@github.com:mhome-ai/${name}.git" "$dest"
+  echo "Cloning mhome-ai/${2:-$name} into $dest"
+  git clone "git@github.com:mhome-ai/${2:-$name}.git" "$dest"
 }
 
 clone_if_missing baycat
 clone_if_missing meowcore-rust
 clone_if_missing releases
+
+clone_if_missing agent-rust agent

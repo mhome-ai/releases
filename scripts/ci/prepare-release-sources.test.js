@@ -51,11 +51,24 @@ function provisionClone(home, name, origin, branch) {
 test("prepares sibling worktrees from product tags and leaves HEAD clones alone", (t) => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "mhome-home-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const agent = createOrigin(t, {
+    name: "agent", branch: "main", files: {
+      "Cargo.toml": '[workspace.package]\nversion = "0.11.5"\n',
+    },
+  });
+  const agentClone = provisionClone(home, "agent-rust", agent, "main");
+  git(agentClone, "config", "user.name", "Release Test");
+  git(agentClone, "config", "user.email", "release@example.invalid");
+  write(path.join(agentClone, "later.txt"), "newer source must not enter the release");
+  git(agentClone, "add", "."); git(agentClone, "commit", "-qm", "later source");
+  const currentAgentHead = git(agentClone, "rev-parse", "HEAD");
+  const agentPin = JSON.stringify({ schemaVersion: 1, repository: "mhome-ai/agent", version: "0.11.5", commit: agent.commit });
   const meowcore = createOrigin(t, {
     name: "meowcore",
     branch: "main",
     tag: "v1.0.12",
     files: {
+      "release/sources/agent.json": agentPin,
       "Cargo.toml": '[package]\nname = "meowcore"\nversion = "1.0.12"\n',
     },
   });
@@ -90,6 +103,10 @@ test("prepares sibling worktrees from product tags and leaves HEAD clones alone"
     withMeowcore: true,
     home,
   });
+  assert.equal(git(result.agent_dir, "rev-parse", "HEAD"), agent.commit);
+  assert.equal(git(agentClone, "branch", "--show-current"), "main");
+  assert.equal(git(agentClone, "rev-parse", "HEAD"), currentAgentHead);
+  assert.equal(fs.existsSync(path.join(result.agent_dir, "later.txt")), false);
   assert.equal(git(result.baycat_dir, "rev-parse", "HEAD"), baycat.commit);
   assert.equal(git(result.meowcore_dir, "rev-parse", "HEAD"), meowcore.commit);
   assert.equal(path.basename(path.dirname(result.meowcore_dir)), "nlr-test");
