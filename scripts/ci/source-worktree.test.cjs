@@ -63,6 +63,7 @@ test("consumer gets its exact Agent pin and partial preparation is rolled back",
   const { root, repo, args } = setup(t);
   const helper = fs.readFileSync(path.resolve(__dirname, "../../../agent/scripts/consumer-source.cjs"), "utf8");
   const agent = repo("agent", { "Cargo.toml": '[workspace.package]\nversion = "0.11.5"\n', "scripts/consumer-source.cjs": helper });
+  git(agent.clone, "tag", "-a", "v0.11.5", "-m", "v0.11.5", agent.revision);
   const pin = { schemaVersion: 1, repository: "mhome-ai/agent", version: "0.11.5", commit: agent.revision };
   const cloud = repo("agent-cloud", { "release/sources/agent.json": JSON.stringify(pin) });
   const output = prepare({ ...args, name: "agent-cloud", revision: cloud.revision });
