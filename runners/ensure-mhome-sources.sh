@@ -48,6 +48,6 @@ clone_if_missing baycat
 clone_if_missing meowcore-rust
 clone_if_missing releases
 
-clone_if_missing agent-rust agent
+clone_if_missing agent agent
 clone_if_missing agent-cloud
 clone_if_missing foundation

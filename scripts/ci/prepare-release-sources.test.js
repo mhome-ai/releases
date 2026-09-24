@@ -56,7 +56,7 @@ test("prepares sibling worktrees from product tags and leaves HEAD clones alone"
       "Cargo.toml": '[workspace.package]\nversion = "0.11.5"\n',
     },
   });
-  const agentClone = provisionClone(home, "agent-rust", agent, "main");
+  const agentClone = provisionClone(home, "agent", agent, "main");
   git(agentClone, "config", "user.name", "Release Test");
   git(agentClone, "config", "user.email", "release@example.invalid");
   write(path.join(agentClone, "later.txt"), "newer source must not enter the release");

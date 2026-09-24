@@ -61,8 +61,8 @@ test("missing repositories fail and an existing task directory is never replaced
 
 test("consumer gets its exact Agent pin and partial preparation is rolled back", (t) => {
   const { root, repo, args } = setup(t);
-  const helper = fs.readFileSync(path.resolve(__dirname, "../../../agent-rust/scripts/consumer-source.cjs"), "utf8");
-  const agent = repo("agent-rust", { "Cargo.toml": '[workspace.package]\nversion = "0.11.5"\n', "scripts/consumer-source.cjs": helper });
+  const helper = fs.readFileSync(path.resolve(__dirname, "../../../agent/scripts/consumer-source.cjs"), "utf8");
+  const agent = repo("agent", { "Cargo.toml": '[workspace.package]\nversion = "0.11.5"\n', "scripts/consumer-source.cjs": helper });
   const pin = { schemaVersion: 1, repository: "mhome-ai/agent", version: "0.11.5", commit: agent.revision };
   const cloud = repo("agent-cloud", { "release/sources/agent.json": JSON.stringify(pin) });
   const output = prepare({ ...args, name: "agent-cloud", revision: cloud.revision });
@@ -78,8 +78,8 @@ test("consumer gets its exact Agent pin and partial preparation is rolled back",
 
 test("unknown commits fail without falling back to canonical HEAD", (t) => {
   const { root, repo, args } = setup(t);
-  const source = repo("agent-rust", { "source.txt": "current" });
-  assert.throws(() => prepare({ ...args, name: "agent-rust", revision: "a".repeat(40) }));
-  assert.equal(fs.existsSync(path.join(root, "work/agent-rust-123-test-1")), false);
+  const source = repo("agent", { "source.txt": "current" });
+  assert.throws(() => prepare({ ...args, name: "agent", revision: "a".repeat(40) }));
+  assert.equal(fs.existsSync(path.join(root, "work/agent-123-test-1")), false);
   assert.equal(git(source.clone, "rev-parse", "HEAD"), source.revision);
 });

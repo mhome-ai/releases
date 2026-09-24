@@ -10,7 +10,7 @@ read_product_tag "$tag"
 [ "$PRODUCT_CHANNEL" = "native" ] || fail "$tag is not a native product tag"
 require_mhome_clone baycat
 require_mhome_clone meowcore-rust
-require_mhome_clone agent-rust
+require_mhome_clone agent
 require_mhome_clone releases
 require_cmd git node cargo gh curl minisign
 

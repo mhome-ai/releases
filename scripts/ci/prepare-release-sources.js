@@ -346,17 +346,17 @@ function prepareAgentSource({ consumerDir, workRoot, home }) {
   if (pin.schemaVersion !== 1 || pin.repository !== "mhome-ai/agent" || !/^[0-9a-f]{40}$/.test(pin.commit || "") || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(pin.version || "")) {
     fail("Invalid Agent source pin in " + file);
   }
-  const clone = canonicalClonePath("agent-rust", home);
-  requireExistingClone({ name: "agent-rust", repository: pin.repository }, clone);
+  const clone = canonicalClonePath("agent", home);
+  requireExistingClone({ name: "agent", repository: pin.repository }, clone);
   // Fetch precisely the pinned source; never build an ambient main checkout.
   git(clone, ["fetch", "origin", pin.commit]);
   const commit = git(clone, ["rev-parse", `${pin.commit}^{commit}`]);
   if (commit !== pin.commit) fail("Agent source revision does not match its pin");
-  const directory = path.join(workRoot, "agent-rust");
+  const directory = path.join(workRoot, "agent");
   addDetachedWorktree(clone, directory, pin.commit);
   const manifest = fs.readFileSync(path.join(directory, "Cargo.toml"), "utf8");
   if (manifest.match(/^version\s*=\s*"([^"]+)"/m)?.[1] !== pin.version) fail("Agent source version does not match its pin");
-  requireCleanWorktree("agent-rust", directory);
+  requireCleanWorktree("agent", directory);
   return { directory, repository: pin.repository, version: pin.version, revision: commit };
 }
 
