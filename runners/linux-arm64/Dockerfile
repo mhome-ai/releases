@@ -1,12 +1,16 @@
-# Match GitHub-hosted linux-arm64 CI: ubuntu-24.04-arm.
-FROM ubuntu:24.04
+# Debian 11 is the Linux native glibc baseline (2.31). Binaries built here
+# load on Debian 11 and on newer glibc systems. The Actions runner accepts
+# bullseye's libicu67 and libssl1.1.
+FROM debian:11
 USER root
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
-# Same native build packages as baycat linux CI, plus runner/node-gyp extras.
+# libsqlite3-dev stays out: sqlx bundles SQLite, and bullseye's 3.34 lacks
+# SQL we already use. libssl-dev stays out so a crate cannot link OpenSSL by
+# accident. libssl1.1 is only for the Actions runner's .NET host.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
@@ -17,16 +21,16 @@ RUN apt-get update \
         git \
         jq \
         libarchive-tools \
-        minisign \
-        openssh-client \
         libayatana-appindicator3-dev \
         libdbus-1-dev \
         libglib2.0-dev \
         libgtk-3-dev \
-        libicu74 \
+        libicu67 \
+        libkrb5-3 \
+        liblttng-ust0 \
         libpcap-dev \
-        libsqlite3-dev \
-        libssl-dev \
+        libssl1.1 \
+        openssh-client \
         pkg-config \
         protobuf-compiler \
         python3 \
@@ -36,8 +40,20 @@ RUN apt-get update \
         tar \
         unzip \
         xz-utils \
+        zlib1g \
         zstd \
     && rm -rf /var/lib/apt/lists/*
+
+# Bullseye has no minisign package. Upstream 0.12 Linux binaries are static.
+ARG MINISIGN_VERSION=0.12
+ARG MINISIGN_SHA256=9a599b48ba6eb7b1e80f12f36b94ceca7c00b7a5173c95c3efc88d9822957e73
+RUN curl -fsSL "https://github.com/jedisct1/minisign/releases/download/${MINISIGN_VERSION}/minisign-${MINISIGN_VERSION}-linux.tar.gz" \
+      -o /tmp/minisign.tar.gz \
+    && echo "${MINISIGN_SHA256}  /tmp/minisign.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/minisign.tar.gz -C /tmp \
+    && mv /tmp/minisign-linux/aarch64/minisign /usr/local/bin/minisign \
+    && chmod 755 /usr/local/bin/minisign \
+    && rm -rf /tmp/minisign.tar.gz /tmp/minisign-linux
 
 ARG NODE_VERSION=20.20.2
 RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-arm64.tar.xz" \

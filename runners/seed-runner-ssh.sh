@@ -16,7 +16,7 @@ if [ -z "$volume" ] || [ ! -f "$key" ]; then
 fi
 
 image=""
-for candidate in meow-linux-arm64-runner:local meow-linux-amd64-runner:local ubuntu:24.04; do
+for candidate in meow-linux-arm64-runner:local meow-linux-amd64-runner:local debian:11; do
   if docker image inspect "$candidate" >/dev/null 2>&1; then
     image="$candidate"
     break

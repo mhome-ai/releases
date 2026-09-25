@@ -1,8 +1,11 @@
 # Linux amd64 self-hosted runner
 
 Docker template for a long-lived GitHub Actions runner that builds Baycat
-Linux amd64 natives (`linux-x64` / `x86_64-unknown-linux-gnu`). Matches
-GitHub-hosted `ubuntu-24.04`.
+Linux amd64 natives (`linux-x64` / `x86_64-unknown-linux-gnu`). The image
+is Debian 11 so the glibc baseline is 2.31. Rebuilding this image invalidates
+objects in the `cargo-target` volume; remove that volume before the next
+native release or the new binaries can keep glibc symbols from the previous
+Ubuntu 24.04 toolchain.
 
 The ARM sibling is `../linux-arm64/`. Both containers can stay up at once;
 they use different compose projects, labels, and named volumes.
