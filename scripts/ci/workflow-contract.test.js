@@ -30,11 +30,10 @@ test("workflows never clone and never use GitHub-hosted compile jobs", () => {
     assert.doesNotMatch(text, /ubuntu-latest/, file);
     assert.doesNotMatch(text, /ubuntu-22\.04/, file);
     assert.doesNotMatch(text, /GPR_TOKEN/, file);
-    if (!file.endsWith("/run-tagged-plugin.yaml")) {
-      assert.doesNotMatch(text, /actions\/upload-artifact/, file);
-      assert.doesNotMatch(text, /actions\/download-artifact/, file);
-      assert.doesNotMatch(text, /^\s+needs:/m, file);
-    }
+    assert.doesNotMatch(text, /actions\/upload-artifact/, file);
+    assert.doesNotMatch(text, /actions\/download-artifact/, file);
+    assert.doesNotMatch(text, /^\s+needs:/m, file);
+    assert.doesNotMatch(text, /plugin-build-ephemeral|builder_labels|PLUGIN_SOURCE_READ_TOKEN/, file);
   }
 });
 
@@ -229,16 +228,17 @@ test("CI bash never expands a possibly-empty array under set -u", () => {
 });
 
 
-test("Plugin builds cannot see publisher credentials or run on the publisher machine", () => {
+test("Plugin builds and publishes on the existing runner with local artifact verification", () => {
   const workflow = read(".github/workflows/run-tagged-plugin.yaml");
-  const [build, publish] = workflow.split("  publish:");
-  assert.match(build, /contents: read/);
-  assert.doesNotMatch(build, /contents: write|packages: write|id-token: write|PRIVATE_KEY|APPLE_CSC/);
+  const [build, publish] = workflow.split("      - name: Verify, sign and publish frozen artifacts");
+  assert.match(build, /runs-on:.*inputs\.runner_labels/);
+  assert.doesNotMatch(build, /secrets\.|PRIVATE_KEY|APPLE_CSC/);
   assert.match(build, /plugin-build\.sh/);
-  assert.match(publish, /needs: build/);
-  assert.match(publish, /test "\$RUNNER_NAME" != "\$BUILD_RUNNER"/);
   assert.match(publish, /PLUGIN_CATALOG_PRIVATE_KEY_B64/);
-  assert.doesNotMatch(read("scripts/ci/plugin-release.sh"), /quality-gate|test:release|--phase build/);
+  assert.match(publish, /if: always\(\)/);
+  assert.doesNotMatch(read("scripts/ci/plugin-build.sh"), /trap cleanup_worktree/);
+  assert.match(read("scripts/ci/plugin-build.sh"), /quality-gate\.sh/);
+  assert.match(read("scripts/ci/plugin-release.sh"), /verify-plugin-handoff\.js/);
   assert.match(read("scripts/ci/plugin-release.sh"), /--phase publish/);
   assert.match(read("scripts/ci/plugin-docker-release.sh"), /--publish-only/);
 });

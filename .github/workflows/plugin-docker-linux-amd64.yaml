@@ -28,7 +28,6 @@ jobs:
       cancel-in-progress: false
     with:
       runner_labels: '["self-hosted","Linux","AMD64","release-linux-amd64"]'
-      builder_labels: '["self-hosted","Linux","X64","plugin-build-ephemeral"]'
       channel: plugin-docker
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       initialize_catalog: ${{ github.event_name == 'workflow_dispatch' && inputs.initialize_catalog || false }}

@@ -4,7 +4,7 @@ set -euo pipefail
 HOME=/home/runner
 CARGO_HOME=/home/runner/.cargo
 RUSTUP_HOME=/home/runner/.rustup
-CARGO_TARGET_DIR=/home/runner/.cache/cargo-target
+CARGO_TARGET_DIR=/home/runner/.cache/cargo-target/debian11
 MHOME_DOWNLOAD_CACHE_ROOT=/home/runner/.cache/mhome-downloads
 PATH="$CARGO_HOME/bin:/usr/local/bin:/usr/bin:/bin"
 export HOME CARGO_HOME RUSTUP_HOME CARGO_TARGET_DIR MHOME_DOWNLOAD_CACHE_ROOT PATH

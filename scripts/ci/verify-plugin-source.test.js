@@ -1,18 +1,33 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {validateChecks, validateProtection} = require('./verify-plugin-source');
-test('only both successful CI checks on the exact source revision admit a release', () => {
-  const revision = 'a'.repeat(40);
-  const runs = ['ubuntu-22.04','macos-14'].map((os,i) => ({id:i+1,head_sha:revision, app:{slug:'github-actions'},name:`Plugin quality (${os})`,status:'completed',conclusion:'success'}));
-  validateChecks(runs, revision);
-  assert.throws(() => validateChecks(runs, 'b'.repeat(40)), /missing successful/);
-  assert.throws(() => validateChecks([...runs,{...runs[0],id:3,conclusion:'failure'}],revision), /missing successful/);
-  assert.throws(() => validateChecks(runs.slice(1),revision), /missing successful/);
-});
-test('source publication requires enforced code-owner review, including admins', () => {
-  const policy = {enforce_admins:{enabled:true},required_pull_request_reviews:{require_code_owner_reviews:true,dismiss_stale_reviews:true,required_approving_review_count:1}};
-  validateProtection(policy);
-  for (const key of ['require_code_owner_reviews','dismiss_stale_reviews','required_approving_review_count'])
-    assert.throws(() => validateProtection({...policy,required_pull_request_reviews:{...policy.required_pull_request_reviews,[key]:false}}));
-  assert.throws(() => validateProtection({...policy,enforce_admins:{enabled:false}}));
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+const { verifyPluginSource } = require('./verify-plugin-source');
+
+test('source admission uses remote main and rejects an unmerged source commit', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-source-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: 'pipe' }).trim();
+  const origin = path.join(root, 'origin');
+  fs.mkdirSync(origin);
+  git(origin, 'init', '-b', 'main');
+  git(origin, 'config', 'user.name', 'Fixture');
+  git(origin, 'config', 'user.email', 'test@example.invalid');
+  git(origin, 'commit', '--allow-empty', '-m', 'main');
+  const approved = git(origin, 'rev-parse', 'HEAD');
+  git(origin, 'switch', '-c', 'unmerged');
+  git(origin, 'commit', '--allow-empty', '-m', 'unreviewed');
+  const unmerged = git(origin, 'rev-parse', 'HEAD');
+  git(origin, 'switch', 'main');
+  const clone = path.join(root, 'plugin');
+  git(root, 'clone', origin, clone);
+  verifyPluginSource(clone, approved);
+  assert.throws(() => verifyPluginSource(clone, unmerged));
+  assert.throws(() => verifyPluginSource(clone, 'a'.repeat(40)));
+  assert.throws(() => verifyPluginSource(clone, 'main'), /full Plugin source commit/);
+  git(origin, 'commit', '--allow-empty', '-m', 'next approved');
+  verifyPluginSource(clone, git(origin, 'rev-parse', 'HEAD'));
+  assert.equal(git(clone, 'rev-parse', 'HEAD'), approved);
 });

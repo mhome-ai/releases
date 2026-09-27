@@ -7,7 +7,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const { execFileSync } = require("node:child_process");
-const REPOS = { foundation: "foundation", "agent": "agent", "agent-cloud": "agent-cloud", "meowcore-rust": "meowcore-rust" };
+const REPOS = { foundation: "foundation", "agent": "agent", "agent-cloud": "agent-cloud", "meowcore-rust": "meowcore-rust", plugin: "plugin" };
 const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], {
   encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
   env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },

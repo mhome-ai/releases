@@ -2,10 +2,10 @@
 
 Docker template for a long-lived GitHub Actions runner that builds Baycat
 Linux amd64 natives (`linux-x64` / `x86_64-unknown-linux-gnu`). The image
-is Debian 11 so the glibc baseline is 2.31. Rebuilding this image invalidates
-objects in the `cargo-target` volume; remove that volume before the next
-native release or the new binaries can keep glibc symbols from the previous
-Ubuntu 24.04 toolchain.
+is Debian 11 so the glibc baseline is 2.31. Build objects use the `debian11` subdirectory of the persistent
+`cargo-target` volume, so older Ubuntu objects cannot be reused across the
+glibc baseline change. Existing caches and volumes are preserved. A future
+baseline change must use a new cache subdirectory.
 
 The ARM sibling is `../linux-arm64/`. Both containers can stay up at once;
 they use different compose projects, labels, and named volumes.
@@ -34,14 +34,15 @@ which repositories can use the runner, pick **All repositories**. Tokens expire
 in about an hour and are only needed the first time the Docker volume has no
 `.runner` file.
 
-Put a GitHub SSH read key for `baycat`, `meowcore-rust`, and `releases` in
+Put a GitHub SSH read key for `baycat`, `plugin`, `meowcore-rust`, `agent`,
+`agent-cloud`, `foundation`, and `releases` in
 the `runner-ssh` volume (`id_ed25519`) before the first start:
 
 ```bash
 ../seed-runner-ssh.sh meow-linux-amd64-runner_runner-ssh
 ```
 
-The entrypoint clones those three into `~/.mhome` if they are missing.
+The entrypoint clones those repositories into `~/.mhome` if they are missing.
 Workflows do not clone.
 
 Private repos need a GitHub plan that allows org-level self-hosted runners

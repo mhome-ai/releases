@@ -29,14 +29,14 @@ function setup(t) {
   return { root, repo, args };
 }
 
-test("uses event SHA while preserving newer canonical main and cleans generated files", (t) => {
+for (const name of ["foundation", "plugin"]) test(`${name}: uses event SHA while preserving newer canonical main and cleans generated files`, (t) => {
   const { root, repo, args } = setup(t);
-  const source = repo("foundation", { "source.txt": "pinned" });
+  const source = repo(name, { "source.txt": "pinned" });
   fs.writeFileSync(path.join(source.origin, "later.txt"), "later");
   git(source.origin, "add", "."); git(source.origin, "commit", "-qm", "newer");
   git(source.clone, "pull", "--ff-only");
   const before = git(source.clone, "rev-parse", "HEAD");
-  const output = prepare({ ...args, name: "foundation", revision: source.revision });
+  const output = prepare({ ...args, name, revision: source.revision });
   assert.equal(git(output.MHOME_SOURCE_DIR, "rev-parse", "HEAD"), source.revision);
   assert.equal(fs.existsSync(path.join(output.MHOME_SOURCE_DIR, "later.txt")), false);
   assert.equal(git(source.clone, "rev-parse", "HEAD"), before);

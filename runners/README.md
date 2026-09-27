@@ -12,7 +12,8 @@ Both can stay up on the same Apple Silicon Docker host. They use different
 compose projects, labels, and named volumes. Each container mounts the host
 Docker socket and a persistent `~/.ssh` volume for GitHub SSH keys.
 
-Put a read key for `baycat`, `meowcore-rust`, and `releases` at
+Put a read key for `baycat`, `plugin`, `meowcore-rust`, `agent`, `agent-cloud`,
+`foundation`, and `releases` at
 `id_ed25519` in that volume **before** the first start:
 
 ```bash
@@ -20,7 +21,7 @@ Put a read key for `baycat`, `meowcore-rust`, and `releases` at
 ./seed-runner-ssh.sh meow-linux-amd64-runner_runner-ssh
 ```
 
-The entrypoint clones those three into the persistent `~/.mhome` volume if
+The entrypoint clones those repositories into the persistent `~/.mhome` volume if
 they are missing. Image build does not clone: the key is not in the build.
 Workflows never clone; they only `git fetch` tags into worktrees.
 

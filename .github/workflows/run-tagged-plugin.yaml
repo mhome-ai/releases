@@ -5,9 +5,6 @@ on:
       runner_labels:
         required: true
         type: string
-      builder_labels:
-        required: true
-        type: string
       channel:
         required: true
         type: string
@@ -29,81 +26,15 @@ env:
   WORK_SUFFIX: ${{ inputs.work_suffix }}
   INITIALIZE_CATALOG: ${{ inputs.initialize_catalog }}
 jobs:
-  build:
-    permissions:
-      contents: read
-    runs-on: ${{ fromJSON(inputs.builder_labels) }}
-    timeout-minutes: 480
-    outputs:
-      runner: ${{ steps.prepare.outputs.runner }}
-    steps:
-      - name: Prepare frozen orchestrator
-        id: prepare
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ inputs.tag }}
-          ORCHESTRATOR_REF: ${{ inputs.orchestrator_ref }}
-          WORK_SUFFIX: ${{ inputs.work_suffix }}
-        run: |
-          set -euo pipefail
-          if [ "$(uname -s)" = Darwin ]; then
-            export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
-          fi
-          mhome="${MHOME_ROOT:-$HOME/.mhome}"
-          releases="$mhome/releases"
-          tag="${RELEASE_TAG:?}"
-          [ -e "$releases/.git" ] || {
-            echo "::error::runner is missing $releases; provision ~/.mhome on this machine"
-            exit 1
-          }
-          git -C "$releases" fetch --prune origin
-          work_id="${GITHUB_RUN_ID}-${WORK_SUFFIX:-$GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}"
-          work="$mhome/work/${work_id}"
-          if [ -e "$work" ]; then
-            git -C "$releases" worktree remove --force "$work/releases" 2>/dev/null || true
-            git -C "$releases" worktree prune
-            rm -rf "$work"
-          fi
-          mkdir -p "$work"
-          if [ -n "${ORCHESTRATOR_REF:-}" ]; then
-            git -C "$releases" fetch origin "${GITHUB_REF}"
-            git -C "$releases" worktree add --detach "$work/releases" "$ORCHESTRATOR_REF"
-          else
-            git -C "$releases" fetch origin "refs/tags/${tag}:refs/tags/${tag}"
-            git -C "$releases" worktree add --detach "$work/releases" "$tag"
-          fi
-          export WORK_ID="$work_id" WORK_ROOT="$work" RELEASES_DIR="$work/releases" MHOME_ROOT="$mhome"
-          git -C "$releases" merge-base --is-ancestor "$(git -C "$work/releases" rev-parse HEAD)" origin/main
-          PLUGIN_HANDOFF="$RUNNER_TEMP/plugin-handoff-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          for name in WORK_ID WORK_ROOT RELEASES_DIR MHOME_ROOT PLUGIN_HANDOFF; do printf '%s=%s\n' "$name" "${!name}" >> "$GITHUB_ENV"; done
-          printf 'runner=%s\n' "$RUNNER_NAME" >> "$GITHUB_OUTPUT"
-      - name: Build without publishing or signing credentials
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PLUGIN_SOURCE_READ_TOKEN: ${{ secrets.PLUGIN_SOURCE_READ_TOKEN }}
-        run: bash "$RELEASES_DIR/scripts/ci/plugin-build.sh"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: plugin-${{ inputs.work_suffix }}
-          path: ${{ env.PLUGIN_HANDOFF }}
-          retention-days: 3
-          if-no-files-found: error
-  publish:
-    needs: build
+  release:
     permissions:
       contents: write
       packages: write
       id-token: write
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
-    timeout-minutes: 120
+    timeout-minutes: 480
     steps:
-      - name: Require a separate publisher machine
-        env:
-          BUILD_RUNNER: ${{ needs.build.outputs.runner }}
-        run: test "$RUNNER_NAME" != "$BUILD_RUNNER"
       - name: Prepare frozen orchestrator
-        id: prepare
         shell: bash
         env:
           RELEASE_TAG: ${{ inputs.tag }}
@@ -124,11 +55,9 @@ jobs:
           git -C "$releases" fetch --prune origin
           work_id="${GITHUB_RUN_ID}-${WORK_SUFFIX:-$GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}"
           work="$mhome/work/${work_id}"
-          if [ -e "$work" ]; then
-            git -C "$releases" worktree remove --force "$work/releases" 2>/dev/null || true
-            git -C "$releases" worktree prune
-            rm -rf "$work"
-          fi
+          [ ! -e "$work" ] || { echo "Release work directory already exists: $work" >&2; exit 1; }
+          echo "WORK_ROOT=$work" >> "$GITHUB_ENV"
+          echo "MHOME_ROOT=$mhome" >> "$GITHUB_ENV"
           mkdir -p "$work"
           if [ -n "${ORCHESTRATOR_REF:-}" ]; then
             git -C "$releases" fetch origin "${GITHUB_REF}"
@@ -140,19 +69,28 @@ jobs:
           export WORK_ID="$work_id" WORK_ROOT="$work" RELEASES_DIR="$work/releases" MHOME_ROOT="$mhome"
           git -C "$releases" merge-base --is-ancestor "$(git -C "$work/releases" rev-parse HEAD)" origin/main
           PLUGIN_HANDOFF="$RUNNER_TEMP/plugin-handoff-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          [ ! -e "$PLUGIN_HANDOFF" ] || { echo "Plugin build directory already exists: $PLUGIN_HANDOFF" >&2; exit 1; }
           for name in WORK_ID WORK_ROOT RELEASES_DIR MHOME_ROOT PLUGIN_HANDOFF; do printf '%s=%s\n' "$name" "${!name}" >> "$GITHUB_ENV"; done
-          printf 'runner=%s\n' "$RUNNER_NAME" >> "$GITHUB_OUTPUT"
-      - uses: actions/download-artifact@v4
-        with:
-          name: plugin-${{ inputs.work_suffix }}
-          path: ${{ env.PLUGIN_HANDOFF }}
+      - name: Build and check frozen Plugin source
+        shell: bash
+        run: bash "$RELEASES_DIR/scripts/ci/plugin-build.sh"
       - name: Verify, sign and publish frozen artifacts
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PLUGIN_SOURCE_READ_TOKEN: ${{ secrets.PLUGIN_SOURCE_READ_TOKEN }}
           PLUGIN_PUBLISH_ROLE_ARN: ${{ vars.PLUGIN_PUBLISH_ROLE_ARN }}
           PLUGIN_CATALOG_PRIVATE_KEY_B64: ${{ secrets.PLUGIN_CATALOG_PRIVATE_KEY_B64 }}
           APPLE_CSC_LINK: ${{ inputs.channel == 'plugin' && secrets.APPLE_CSC_LINK || '' }}
           APPLE_CSC_KEY_PASSWORD: ${{ inputs.channel == 'plugin' && secrets.APPLE_CSC_KEY_PASSWORD || '' }}
         run: bash "$RELEASES_DIR/scripts/ci/run.sh"
+      - name: Clean release worktrees and build artifacts
+        if: always() && env.WORK_ROOT != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -e "$WORK_ROOT/releases/.git" ]; then
+            node "$WORK_ROOT/releases/scripts/ci/cleanup-release-sources.js" "$WORK_ROOT"
+          elif [ -d "$WORK_ROOT" ]; then
+            rmdir "$WORK_ROOT"
+          fi
+          if [ -n "${PLUGIN_HANDOFF:-}" ]; then rm -rf -- "$PLUGIN_HANDOFF"; fi
