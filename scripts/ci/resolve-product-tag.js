@@ -28,6 +28,12 @@ function stripRef(ref) {
 
 function resolveProductTag(ref) {
   const tag = stripRef(ref);
+  const plugin = /^(pnmr|pnmx|pnlr|pnlx)(\d+\.\d+\.\d+)$/.exec(tag);
+  if (plugin) {
+    return { channel: "plugin", prefix: plugin[1], platform: NATIVE_PREFIXES[plugin[1].slice(1)],
+      version: plugin[2], sourceTag: productSourceTag(plugin[2]), releaseTag: tag,
+      withPallas: false, withMeowcore: false };
+  }
   const native = /^(nlr|nlx|nmr|nmx|nw)(\d+\.\d+\.\d+)$/.exec(tag);
   if (native) {
     const version = native[2];

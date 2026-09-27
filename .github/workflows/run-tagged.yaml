@@ -47,17 +47,19 @@ jobs:
           DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'docker' && vars.DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN || '' }}
           NATIVE_INSTALL_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'install' && vars.NATIVE_INSTALL_PUBLISH_ROLE_ARN || '' }}
           APPLE_TEAM_ID: ${{ inputs.channel == 'desktop' && vars.APPLE_TEAM_ID || '' }}
+          PLUGIN_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'plugin' && vars.PLUGIN_PUBLISH_ROLE_ARN || '' }}
+          PLUGIN_CATALOG_PRIVATE_KEY_B64: ${{ inputs.channel == 'plugin' && secrets.PLUGIN_CATALOG_PRIVATE_KEY_B64 || '' }}
           RUNTIME_CATALOG_PRIVATE_KEY_B64: ${{ inputs.channel == 'native' && secrets.RUNTIME_CATALOG_PRIVATE_KEY_B64 || '' }}
-          APPLE_CSC_LINK: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.APPLE_CSC_LINK || '' }}
-          APPLE_CSC_KEY_PASSWORD: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.APPLE_CSC_KEY_PASSWORD || '' }}
+          APPLE_CSC_LINK: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop' || inputs.channel == 'plugin') && secrets.APPLE_CSC_LINK || '' }}
+          APPLE_CSC_KEY_PASSWORD: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop' || inputs.channel == 'plugin') && secrets.APPLE_CSC_KEY_PASSWORD || '' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.channel == 'desktop' && secrets.UPDATER_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.channel == 'desktop' && secrets.UPDATER_PRIVATE_KEY_PASSWORD || '' }}
           APPLE_ID: ${{ inputs.channel == 'desktop' && secrets.APPLE_ID || '' }}
           APPLE_ID_PASSWORD: ${{ inputs.channel == 'desktop' && secrets.APPLE_ID_PASSWORD || '' }}
-          SSL_COM_USERNAME: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_USERNAME || '' }}
-          SSL_COM_PASSWORD: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_PASSWORD || '' }}
-          SSL_COM_CREDENTIAL_ID: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_CREDENTIAL_ID || '' }}
-          SSL_COM_TOTP_SECRET: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_TOTP_SECRET || '' }}
+          SSL_COM_USERNAME: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop' || inputs.channel == 'plugin') && secrets.SSL_COM_USERNAME || '' }}
+          SSL_COM_PASSWORD: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop' || inputs.channel == 'plugin') && secrets.SSL_COM_PASSWORD || '' }}
+          SSL_COM_CREDENTIAL_ID: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop' || inputs.channel == 'plugin') && secrets.SSL_COM_CREDENTIAL_ID || '' }}
+          SSL_COM_TOTP_SECRET: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop' || inputs.channel == 'plugin') && secrets.SSL_COM_TOTP_SECRET || '' }}
           DOCKER_CATALOG_PRIMARY_PRIVATE_KEY_B64: ${{ inputs.channel == 'docker' && secrets.DOCKER_CATALOG_PRIMARY_PRIVATE_KEY_B64 || '' }}
           DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64: ${{ inputs.channel == 'docker' && secrets.DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64 || '' }}
         run: |
