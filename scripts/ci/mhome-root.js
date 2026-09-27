@@ -4,7 +4,11 @@ const os = require("node:os");
 const path = require("node:path");
 
 const PRODUCT_REPOS = {
-  plugin: { name: "plugin", repository: "mhome-ai/plugin", defaultBranch: "main" },
+  plugin: {
+    name: "plugin",
+    repository: "mhome-ai/plugin",
+    defaultBranch: "main",
+  },
   baycat: {
     name: "baycat",
     repository: "mhome-ai/baycat",

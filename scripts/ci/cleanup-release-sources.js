@@ -18,7 +18,9 @@ function git(repoDir, args) {
   if (result.error) throw result.error;
   if (result.status !== 0) {
     fail(
-      `git ${args.join(" ")} failed in ${repoDir}: ${(result.stderr || "").trim()}`
+      `git ${args.join(" ")} failed in ${repoDir}: ${(
+        result.stderr || ""
+      ).trim()}`
     );
   }
   return result.stdout.trim();
@@ -34,7 +36,14 @@ function cleanupReleaseSources(sourceRoot, home = os.homedir()) {
   }
   if (!fs.existsSync(resolved)) return;
 
-  const names = ["plugin", "baycat", "meowcore-rust", "agent", "pallas-cat", "releases"];
+  const names = [
+    "plugin",
+    "baycat",
+    "meowcore-rust",
+    "agent",
+    "pallas-cat",
+    "releases",
+  ];
   for (const name of names) {
     const worktree = path.join(resolved, name);
     if (!fs.existsSync(worktree)) continue;

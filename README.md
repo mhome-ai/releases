@@ -51,3 +51,11 @@ Agent is also a source input. Provision `~/.mhome/agent` from the private `mhome
 ## Shared CI source bootstrap
 
 `scripts/ci/source-worktree.cjs` is used by Foundation, Agent, Agent cloud and MeowCore CI. Runners pre-provision each repository under `~/.mhome/` with their existing GitHub read access. The helper fetches the event commit, creates a detached worktree under a unique `~/.mhome/work/<repo>-<run>-<job>-<attempt>/`, and prepares the exact Agent pin for consumers. It never clones or changes canonical checkout branches, refuses existing work directories, and rolls back partial preparation. Cleanup removes only recorded task-owned worktrees. Workflows load the helper from the Releases main commit they just fetched; deliver this helper before dependent workflow updates.
+
+## Plugin 独立发布
+
+`plugin` 从 `~/.mhome/plugin` 的 annotated `vX.Y.Z` 取源码，使用 `pnmr/pnmx/pnlr/pnlx` 发布 Native 包，`pdlr/pdlx` 发布 Linux 家电镜像。平台 Native 和 Core Docker 继续从 Baycat 构建。Plugin workflow 不编译 Baycat 或 MeowCore 源码。
+
+首次运行需要准备官方 plugin 仓库、PR 审核、runner 只读凭据、`PLUGIN_PUBLISH_ROLE_ARN` 和 `PLUGIN_CATALOG_PRIVATE_KEY_B64`；公钥当前沿用官方 Runtime 密钥，secret 和 S3 写权限独立。Plugin role 只写 `plugins/*` 指定前缀。先发布平台 Native 1.0.5，再发布 Plugin Native，最后发布依赖固定 Host 包的家电镜像。
+
+首次目录初始化须用对应 workflow 手动输入 tag 和 `initialize_catalog=true`。完整规则见 plugin 仓库 `release/README.md`。Catalog 保留插件源码与编排 commit；重试复用已经上传的完整签名快照。stable 的 `catalog.bundle.json` 最后原子写入，消费者不会读取中途更新的 JSON/签名对。同一 Linux 构建机或 Mac 签名环境仍使用公共资源锁。

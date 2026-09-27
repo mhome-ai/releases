@@ -6,7 +6,7 @@ source "$HERE/lib.sh"
 
 CHANNEL="${RELEASE_CHANNEL:?RELEASE_CHANNEL is required}"
 case "$CHANNEL" in
-  native|desktop|docker|plugin)
+  native|desktop|docker|plugin|plugin-docker)
     read_product_tag "${RELEASE_TAG:?RELEASE_TAG is required}"
     [ "$PRODUCT_CHANNEL" = "$CHANNEL" ] || fail "$RELEASE_TAG is $PRODUCT_CHANNEL; this workflow is $CHANNEL"
     if [ -n "${WORK_SUFFIX:-}" ]; then
