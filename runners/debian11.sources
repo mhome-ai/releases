@@ -1,0 +1,17 @@
+# Bullseye's live security index references removed packages after LTS ended.
+# Freeze both repositories to a complete snapshot before that removal.
+# https://bugs.debian.org/1147093
+# HTTP bootstraps ca-certificates; APT still verifies archive signatures and hashes.
+Types: deb
+URIs: http://snapshot.debian.org/archive/debian/20260903T220410Z/
+Suites: bullseye bullseye-updates
+Components: main
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+Check-Valid-Until: no
+
+Types: deb
+URIs: http://snapshot.debian.org/archive/debian-security/20260903T220410Z/
+Suites: bullseye-security
+Components: main
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+Check-Valid-Until: no

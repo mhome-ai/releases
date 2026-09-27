@@ -2,7 +2,7 @@
 # load on Debian 11 and on newer glibc systems. On Apple Silicon this image
 # must run as linux/amd64 with Rosetta. The Actions runner accepts bullseye's
 # libicu67 and libssl1.1.
-FROM debian:11
+FROM debian:11@sha256:6f519a81440354a85eb592c5f32109ab80605f6b892455983a6f618bf87fabe9
 USER root
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -12,7 +12,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # libsqlite3-dev stays out: sqlx bundles SQLite, and bullseye's 3.34 lacks
 # SQL we already use. libssl-dev stays out so a crate cannot link OpenSSL by
 # accident. libssl1.1 is only for the Actions runner's .NET host.
-RUN apt-get update \
+COPY debian11.sources /tmp/debian11.sources
+RUN rm -f /etc/apt/sources.list /etc/apt/sources.list.d/* \
+    && mv /tmp/debian11.sources /etc/apt/sources.list.d/debian11.sources \
+    && apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=3 update \
     && apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \
@@ -95,6 +98,7 @@ RUN useradd --create-home --uid 1001 --shell /bin/bash runner \
 
 COPY --chmod=755 linux-amd64/entrypoint.sh /usr/local/bin/linux-amd64-runner-entrypoint.sh
 COPY --chmod=755 ensure-mhome-sources.sh /usr/local/bin/ensure-mhome-sources.sh
+COPY --chmod=755 verify-linux-builder.sh /usr/local/bin/verify-linux-builder.sh
 
 USER runner
 WORKDIR /home/runner
@@ -106,5 +110,7 @@ ENV HOME=/home/runner \
     MHOME_DOWNLOAD_CACHE_ROOT=/home/runner/.cache/mhome-downloads \
     CARGO_TERM_COLOR=always \
     PATH=/home/runner/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+
+RUN verify-linux-builder.sh
 
 ENTRYPOINT ["/usr/local/bin/linux-amd64-runner-entrypoint.sh"]

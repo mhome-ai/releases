@@ -12,6 +12,43 @@ Both can stay up on the same Apple Silicon Docker host. They use different
 compose projects, labels, and named volumes. Each container mounts the host
 Docker socket and a persistent `~/.ssh` volume for GitHub SSH keys.
 
+## Debian 11 compatibility
+
+Both builder images use Debian 11 / glibc 2.31 because OEM devices still need
+that baseline. This is the build environment inside Docker; the Mac host's OS
+does not determine the Linux binary's glibc requirement. Product dependencies
+and packaged third-party binaries still need their own compatibility checks.
+
+The Debian base is pinned by its multiarchitecture digest. Both recipes use
+the shared `debian11.sources`, frozen to the 2026-09-03 snapshot. After
+Bullseye LTS ended, the live security index referenced removed `.deb` files,
+causing image provisioning to fail before product compilation
+([Debian bug 1147093](https://bugs.debian.org/1147093)). Using this snapshot
+keeps the original compiler and libc baseline with retrievable packages.
+
+Only the historical Release file's freshness check is disabled. APT still
+verifies Debian archive signatures and package hashes; HTTP is used to
+bootstrap `ca-certificates`. The snapshot does not receive new security fixes.
+Updating the builder is an explicit change to the pinned source and image,
+followed by builds for both architectures; it does not require updating OEM
+devices to a newer Debian release.
+
+Every image build runs `verify-linux-builder.sh` as the runner user. It checks
+Debian 11 / glibc 2.31, compiles and executes C/C++ samples, and loads the
+release CLIs and native build dependencies. To repeat it without registering
+an Actions runner or attaching credentials:
+
+```bash
+docker run --rm --platform linux/arm64 --entrypoint verify-linux-builder.sh meow-linux-arm64-runner:local
+docker run --rm --platform linux/amd64 --entrypoint verify-linux-builder.sh meow-linux-amd64-runner:local
+```
+
+An edited Dockerfile does not update an existing runner. Rebuild and replace
+each idle container with its existing compose project and named volumes;
+registration, source checkouts and caches remain in those volumes. Do not use
+`down -v`. Cargo objects for this baseline live under `cargo-target/debian11`,
+separately from old Ubuntu objects.
+
 Put a read key for `baycat`, `plugin`, `meowcore-rust`, `agent`, `agent-cloud`,
 `foundation`, and `releases` at
 `id_ed25519` in that volume **before** the first start:

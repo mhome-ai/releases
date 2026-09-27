@@ -14,6 +14,18 @@ On Apple Silicon this is amd64 **userspace** via Docker Desktop Rosetta,
 not a real amd64 kernel and not QEMU. Enable **Use Rosetta for x86_64/amd64
 emulation on Apple Silicon**. Do not use this compose file without Rosetta.
 
+With Colima, enable Rosetta on the `vz` VM instead. Confirm there are no active
+Docker jobs or containers before restarting that VM:
+
+```bash
+colima stop
+colima start --vm-type vz --vz-rosetta
+```
+
+QEMU can finish package installation but still crash build tools (including
+the Go runtime in `gh`). The image build's CLI smoke test catches that failure;
+do not bypass it to produce a release builder.
+
 This recipe registers an organization runner at `https://github.com/mhome-ai`
 named `meow-linux-amd64-runner` with labels `Linux,AMD64,release-linux-amd64`.
 Those values are fixed in `entrypoint.sh`. GitHub still names the runner
