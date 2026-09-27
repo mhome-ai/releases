@@ -47,11 +47,9 @@ jobs:
           DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'docker' && vars.DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN || '' }}
           NATIVE_INSTALL_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'install' && vars.NATIVE_INSTALL_PUBLISH_ROLE_ARN || '' }}
           APPLE_TEAM_ID: ${{ inputs.channel == 'desktop' && vars.APPLE_TEAM_ID || '' }}
-          PLUGIN_PUBLISH_ROLE_ARN: ${{ (inputs.channel == 'plugin' || inputs.channel == 'plugin-docker') && vars.PLUGIN_PUBLISH_ROLE_ARN || '' }}
-          PLUGIN_CATALOG_PRIVATE_KEY_B64: ${{ (inputs.channel == 'plugin' || inputs.channel == 'plugin-docker') && secrets.PLUGIN_CATALOG_PRIVATE_KEY_B64 || '' }}
           RUNTIME_CATALOG_PRIVATE_KEY_B64: ${{ inputs.channel == 'native' && secrets.RUNTIME_CATALOG_PRIVATE_KEY_B64 || '' }}
-          APPLE_CSC_LINK: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop' || inputs.channel == 'plugin') && secrets.APPLE_CSC_LINK || '' }}
-          APPLE_CSC_KEY_PASSWORD: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop' || inputs.channel == 'plugin') && secrets.APPLE_CSC_KEY_PASSWORD || '' }}
+          APPLE_CSC_LINK: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.APPLE_CSC_LINK || '' }}
+          APPLE_CSC_KEY_PASSWORD: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.APPLE_CSC_KEY_PASSWORD || '' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.channel == 'desktop' && secrets.UPDATER_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.channel == 'desktop' && secrets.UPDATER_PRIVATE_KEY_PASSWORD || '' }}
           APPLE_ID: ${{ inputs.channel == 'desktop' && secrets.APPLE_ID || '' }}
@@ -64,6 +62,7 @@ jobs:
           DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64: ${{ inputs.channel == 'docker' && secrets.DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64 || '' }}
         run: |
           set -euo pipefail
+          case "$RELEASE_CHANNEL" in plugin|plugin-docker) echo "Plugin releases require run-tagged-plugin.yaml" >&2; exit 1 ;; esac
           if [ "$(uname -s)" = Darwin ]; then
             export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
           fi

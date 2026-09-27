@@ -6,7 +6,7 @@ read_product_tag "${RELEASE_TAG:?RELEASE_TAG is required}"
 [ "$PRODUCT_CHANNEL" = plugin-docker ] || fail "Expected a Plugin appliance release tag"
 require_mhome_clone plugin
 require_mhome_clone releases
-require_cmd git node npm cargo gh curl minisign python3 aws docker
+require_cmd git node npm gh curl minisign python3 aws docker
 repo="${GITHUB_REPOSITORY:-mhome-ai/releases}"
 [ -n "${GH_TOKEN:-}" ] || fail "GH_TOKEN is required"
 [ -n "${PLUGIN_PUBLISH_ROLE_ARN:-}" ] || fail "Missing PLUGIN_PUBLISH_ROLE_ARN"
@@ -28,13 +28,11 @@ done < "$prepared"
 rm -f "$prepared"
 cd "${PLUGIN_DIR:?plugin source is missing}"
 npm ci --ignore-scripts
-node scripts/release/check-plugins.js
-node scripts/release/freeze-source.js --check
-npm run test:release
-mkdir -p build/plugin-catalog build/native-plugin-assets
+node "$CI_ROOT/verify-plugin-handoff.js" "${PLUGIN_HANDOFF:?Plugin build artifact is required}" "$PLUGIN_REVISION" "$(git -C "$RELEASES_DIR" rev-parse HEAD)" "$PRODUCT_RELEASE_TAG"
+mkdir -p build/plugin-catalog build/native-plugin-assets "$PLUGIN_HANDOFF/assets"
+cp -R "$PLUGIN_HANDOFF/assets/." build/native-plugin-assets/
 assets_dir="$PWD/build/native-plugin-assets"
 catalog_dir="$PWD/build/plugin-catalog"
-catalog_url="https://install.mhome.ai/plugins/docker/stable/${PRODUCT_PLATFORM}/catalog.json"
 printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "${GITHUB_ACTOR:?}" --password-stdin
 orchestrator_revision="$(git -C "$RELEASES_DIR" rev-parse HEAD)"
 
@@ -57,19 +55,17 @@ if [ "$resume" = true ]; then
   gh release download "$PRODUCT_RELEASE_TAG" --repo "$repo" --pattern catalog.json --pattern catalog.json.minisig --dir "$catalog_dir"
 else
   previous_args=()
-  status="$(curl --location --silent --show-error --retry 8 --retry-all-errors --connect-timeout 15 --max-time 120 \
-    --output "$catalog_dir/previous.bundle.json" --write-out '%{http_code}' "${catalog_url%/catalog.json}/catalog.bundle.json")"
-  if [ "$status" = 200 ]; then
-    node "$CI_ROOT/plugin-catalog-bundle.js" unpack "$catalog_dir/previous.bundle.json" "$catalog_dir/previous.json" "$catalog_dir/previous.json.minisig"
+  if [ -f "$PLUGIN_HANDOFF/previous.bundle.json" ]; then
+    node "$CI_ROOT/plugin-catalog-bundle.js" unpack "$PLUGIN_HANDOFF/previous.bundle.json" "$catalog_dir/previous.json" "$catalog_dir/previous.json.minisig"
     minisign -Vm "$catalog_dir/previous.json" -x "$catalog_dir/previous.json.minisig" -P "$(node scripts/release/native/catalog-config.js public-key)"
     previous_args=(--previous "$catalog_dir/previous.json")
-  elif { [ "$status" = 404 ] || [ "$status" = 403 ]; } && [ "${INITIALIZE_CATALOG:-false}" = true ]; then
+  elif [ -f "$PLUGIN_HANDOFF/initialize" ] && [ "${INITIALIZE_CATALOG:-false}" = true ]; then
     touch "$catalog_dir/verify-origin-absence"
   else
-    fail "Plugin Catalog is unavailable ($status); initializing a missing Catalog requires initialize_catalog=true"
+    fail "Build artifact lacks its verified Catalog baseline"
   fi
   [ -n "${PLUGIN_CATALOG_PRIVATE_KEY_B64:-}" ] || fail "Missing PLUGIN_CATALOG_PRIVATE_KEY_B64"
-  node scripts/release/docker/images.js --platform "$PRODUCT_PLATFORM" --version "$PRODUCT_VERSION" \
+  node scripts/release/docker/images.js --publish-only --artifacts "$assets_dir" --platform "$PRODUCT_PLATFORM" --version "$PRODUCT_VERSION" \
     --revision "$PLUGIN_REVISION" --orchestrator-revision "$orchestrator_revision" \
     --output "$catalog_dir/catalog.json" ${previous_args[@]+"${previous_args[@]}"}
   (umask 077; printf '%s' "$PLUGIN_CATALOG_PRIVATE_KEY_B64" | base64 --decode > "$catalog_dir/catalog.key")

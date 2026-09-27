@@ -56,6 +56,10 @@ Agent is also a source input. Provision `~/.mhome/agent` from the private `mhome
 
 `plugin` 从 `~/.mhome/plugin` 的 annotated `vX.Y.Z` 取源码，使用 `pnmr/pnmx/pnlr/pnlx` 发布 Native 包，`pdlr/pdlx` 发布 Linux 家电镜像。平台 Native 和 Core Docker 继续从 Baycat 构建。Plugin workflow 不编译 Baycat 或 MeowCore 源码。
 
-首次运行需要准备官方 plugin 仓库、PR 审核、runner 只读凭据、`PLUGIN_PUBLISH_ROLE_ARN` 和 `PLUGIN_CATALOG_PRIVATE_KEY_B64`；公钥当前沿用官方 Runtime 密钥，secret 和 S3 写权限独立。Plugin role 只写 `plugins/*` 指定前缀。先发布平台 Native 1.0.5，再发布 Plugin Native，最后发布依赖固定 Host 包的家电镜像。
+首次运行需要准备官方 plugin 仓库、PR 审核、runner 只读凭据、`PLUGIN_PUBLISH_ROLE_ARN` 和 `PLUGIN_CATALOG_PRIVATE_KEY_B64`；Plugin 使用独立签名密钥，公钥已同步安装器，secret 和 S3 写权限独立。Plugin role 只写 `plugins/*` 指定前缀。先发布平台 Native 1.0.5，再发布 Plugin Native，最后发布依赖固定 Host 包的家电镜像。
 
 首次目录初始化须用对应 workflow 手动输入 tag 和 `initialize_catalog=true`。完整规则见 plugin 仓库 `release/README.md`。Catalog 保留插件源码与编排 commit；重试复用已经上传的完整签名快照。stable 的 `catalog.bundle.json` 最后原子写入，消费者不会读取中途更新的 JSON/签名对。同一 Linux 构建机或 Mac 签名环境仍使用公共资源锁。
+
+Plugin 使用 `run-tagged-plugin.yaml` 的两个作业。一次性构建机带 `plugin-build-ephemeral` 标签，仅能读取源码；发布机下载同一 run 的产物，核对源码/编排 commit 和 tag 后验证、签名、上传。发布机不编译或执行插件。二者不能共用物理宿主、Docker daemon、工作盘或凭据；不同 runner 名只是额外防误配检查，不能代替部署隔离。
+
+Plugin 源码必须是受保护 `origin/main` 上且通过两平台 Plugin quality 检查的 commit。`main` 开启 CODEOWNERS 审核、过期审核失效和管理员保护。私有仓库配置 `PLUGIN_SOURCE_READ_TOKEN`，仅授予 Plugin Contents/Checks/Administration 读取权限。源码 PR 校验使用 GitHub 托管 runner；发版构建使用专用一次性 runner。配置未就绪时流水线明确拒绝发布。

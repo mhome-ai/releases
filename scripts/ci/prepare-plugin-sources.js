@@ -20,6 +20,7 @@ function preparePluginSources({ version, workId, home = os.homedir() }) {
   requireExistingClone(PRODUCT_REPOS.plugin, clone);
   const tag = productSourceTag(version);
   const revision = fetchTag(clone, tag);
+  require("./verify-plugin-source").verifyPluginSource(clone, revision);
   const directory = path.join(releaseWorkRoot(workId, home), "plugin");
   if (fs.existsSync(directory))
     throw new Error(`Refusing existing plugin worktree: ${directory}`);

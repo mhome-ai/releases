@@ -22,12 +22,13 @@ permissions:
 
 jobs:
   run:
-    uses: ./.github/workflows/run-tagged.yaml
+    uses: ./.github/workflows/run-tagged-plugin.yaml
     concurrency:
       group: native-runtime-stable-macos
       cancel-in-progress: false
     with:
       runner_labels: '["self-hosted","macOS","ARM64","release-macos-primary"]'
+      builder_labels: '["self-hosted","macOS","ARM64","plugin-build-ephemeral"]'
       channel: plugin
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       initialize_catalog: ${{ github.event_name == 'workflow_dispatch' && inputs.initialize_catalog || false }}

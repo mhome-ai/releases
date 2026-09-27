@@ -18,7 +18,7 @@ function workflowFiles() {
 
 function productWorkflows() {
   return workflowFiles().filter(
-    (file) => !file.endsWith("/run-tagged.yaml")
+    (file) => !file.endsWith("/run-tagged.yaml") && !file.endsWith("/run-tagged-plugin.yaml")
   );
 }
 
@@ -30,9 +30,11 @@ test("workflows never clone and never use GitHub-hosted compile jobs", () => {
     assert.doesNotMatch(text, /ubuntu-latest/, file);
     assert.doesNotMatch(text, /ubuntu-22\.04/, file);
     assert.doesNotMatch(text, /GPR_TOKEN/, file);
-    assert.doesNotMatch(text, /actions\/upload-artifact/, file);
-    assert.doesNotMatch(text, /actions\/download-artifact/, file);
-    assert.doesNotMatch(text, /^\s+needs:/m, file);
+    if (!file.endsWith("/run-tagged-plugin.yaml")) {
+      assert.doesNotMatch(text, /actions\/upload-artifact/, file);
+      assert.doesNotMatch(text, /actions\/download-artifact/, file);
+      assert.doesNotMatch(text, /^\s+needs:/m, file);
+    }
   }
 });
 
@@ -57,7 +59,7 @@ test("each product workflow is one job that calls run-tagged.yaml", () => {
   assert.ok(files.length >= 8, `expected split product workflows, got ${files.join(", ")}`);
   for (const file of files) {
     const text = read(file);
-    assert.match(text, /uses: \.\/\.github\/workflows\/run-tagged\.yaml/, file);
+    assert.match(text, /uses: \.\/\.github\/workflows\/run-tagged(?:-plugin)?\.yaml/, file);
     assert.match(text, /^\s+packages: write$/m, file);
     assert.doesNotMatch(text, /^\s+if:/m, file);
     assert.doesNotMatch(text, /^\s+environment:/m, file);
@@ -224,4 +226,19 @@ test("CI bash never expands a possibly-empty array under set -u", () => {
     /\$\{previous_args\[@\]\+"\$\{previous_args\[@\]\}"\}/
   );
   assert.match(read("scripts/ci/lib.sh"), /\$\{extra\[@\]\+"\$\{extra\[@\]\}"\}/);
+});
+
+
+test("Plugin builds cannot see publisher credentials or run on the publisher machine", () => {
+  const workflow = read(".github/workflows/run-tagged-plugin.yaml");
+  const [build, publish] = workflow.split("  publish:");
+  assert.match(build, /contents: read/);
+  assert.doesNotMatch(build, /contents: write|packages: write|id-token: write|PRIVATE_KEY|APPLE_CSC/);
+  assert.match(build, /plugin-build\.sh/);
+  assert.match(publish, /needs: build/);
+  assert.match(publish, /test "\$RUNNER_NAME" != "\$BUILD_RUNNER"/);
+  assert.match(publish, /PLUGIN_CATALOG_PRIVATE_KEY_B64/);
+  assert.doesNotMatch(read("scripts/ci/plugin-release.sh"), /quality-gate|test:release|--phase build/);
+  assert.match(read("scripts/ci/plugin-release.sh"), /--phase publish/);
+  assert.match(read("scripts/ci/plugin-docker-release.sh"), /--publish-only/);
 });

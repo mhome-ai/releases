@@ -1,0 +1,28 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { writeHandoff, verifyHandoff } = require('./verify-plugin-handoff');
+test('publisher accepts only the exact build inputs, baseline and artifact bytes', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-handoff-'));
+  t.after(() => fs.rmSync(dir, {recursive:true, force:true}));
+  fs.mkdirSync(path.join(dir,'assets'));
+  const asset = path.join(dir,'assets/node-storage.tar.gz');
+  fs.writeFileSync(asset, 'built archive');
+  fs.writeFileSync(path.join(dir,'previous.bundle.json'), 'signed baseline');
+  const identity = ['a'.repeat(40), 'b'.repeat(40), 'pnmr1.0.5'];
+  await writeHandoff(dir, ...identity);
+  await verifyHandoff(dir, ...identity);
+  await assert.rejects(verifyHandoff(dir, 'c'.repeat(40), ...identity.slice(1)), /different source/);
+  fs.writeFileSync(asset, 'changed archive');
+  await assert.rejects(verifyHandoff(dir, ...identity), /artifacts changed/);
+  fs.writeFileSync(asset, 'built archive');
+  fs.writeFileSync(path.join(dir,'previous.bundle.json'), 'changed baseline');
+  await assert.rejects(verifyHandoff(dir, ...identity), /artifacts changed/);
+  fs.writeFileSync(path.join(dir,'previous.bundle.json'), 'signed baseline');
+  fs.unlinkSync(asset);
+  await assert.rejects(verifyHandoff(dir, ...identity), /artifacts changed/);
+  fs.symlinkSync('/tmp', asset);
+  await assert.rejects(verifyHandoff(dir, ...identity), /Unsupported handoff/);
+});
