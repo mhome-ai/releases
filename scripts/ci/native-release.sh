@@ -239,6 +239,7 @@ case "$PRODUCT_PLATFORM" in
       build/runtime-release-verify/catalog.pub
     ;;
   windows)
+    export PATH="/c/Windows/System32:${PATH}"
     pwsh -File scripts/release/native/verify-windows-runtime-release.ps1 \
       -AssetsDirectory "$(pwd)/build/runtime-release-verify" \
       -Catalog "$(pwd)/build/runtime-release-verify/catalog.json" \
