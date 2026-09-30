@@ -50,6 +50,8 @@ case "$PRODUCT_PLATFORM" in
     assets_dir="build/native-runtime/${PRODUCT_PLATFORM}"
     ;;
   windows)
+    # Git Bash puts GNU tar ahead of System32; GNU tar treats C:\ as a remote host.
+    export PATH="/c/Windows/System32:${PATH}"
     node --test scripts/release/windows/windows-release.test.js
     pwsh -File scripts/release/native/package-windows-runtime.ps1 \
       -OutputDirectory "build/native-runtime/windows-x64"
