@@ -26,46 +26,76 @@ function stripRef(ref) {
   return String(ref || "").replace(/^refs\/tags\//, "");
 }
 
+function isCatalogStamp(value) {
+  if (!/^\d{14}$/.test(String(value || ""))) return false;
+  const month = Number(value.slice(4, 6));
+  const day = Number(value.slice(6, 8));
+  const hour = Number(value.slice(8, 10));
+  const minute = Number(value.slice(10, 12));
+  const second = Number(value.slice(12, 14));
+  return (
+    month >= 1 &&
+    month <= 12 &&
+    day >= 1 &&
+    day <= 31 &&
+    hour <= 23 &&
+    minute <= 59 &&
+    second <= 59
+  );
+}
+
+function timestampRelease(tag, prefix, body, channel, platform, extras) {
+  if (!isCatalogStamp(body)) {
+    throw new Error(
+      `${tag} must use ${prefix}YYYYMMDDHHMMSS; component versions come from source`
+    );
+  }
+  return {
+    channel,
+    prefix,
+    platform,
+    version: body,
+    sourceTag: "",
+    sourceMode: "pin",
+    releaseTag: tag,
+    ...extras,
+  };
+}
+
 function resolveProductTag(ref) {
   const tag = stripRef(ref);
-  const pluginDocker = /^(pdlr|pdlx)(\d+\.\d+\.\d+)$/.exec(tag);
-  if (pluginDocker)
-    return {
-      channel: "plugin-docker",
-      prefix: pluginDocker[1],
-      platform: DOCKER_PREFIXES[pluginDocker[1].slice(1)],
-      version: pluginDocker[2],
-      sourceTag: productSourceTag(pluginDocker[2]),
-      releaseTag: tag,
-      withPallas: false,
-      withMeowcore: false,
-    };
-  const plugin = /^(pnmr|pnmx|pnlr|pnlx)(\d+\.\d+\.\d+)$/.exec(tag);
-  if (plugin) {
-    return {
-      channel: "plugin",
-      prefix: plugin[1],
-      platform: NATIVE_PREFIXES[plugin[1].slice(1)],
-      version: plugin[2],
-      sourceTag: productSourceTag(plugin[2]),
-      releaseTag: tag,
-      withPallas: false,
-      withMeowcore: false,
-    };
+  const pluginDocker = /^(pdlr|pdlx)(\d{14}|\d+\.\d+\.\d+)$/.exec(tag);
+  if (pluginDocker) {
+    return timestampRelease(
+      tag,
+      pluginDocker[1],
+      pluginDocker[2],
+      "plugin-docker",
+      DOCKER_PREFIXES[pluginDocker[1].slice(1)],
+      { withPallas: false, withMeowcore: false }
+    );
   }
-  const native = /^(nlr|nlx|nmr|nmx|nw)(\d+\.\d+\.\d+)$/.exec(tag);
+  const plugin = /^(pnmr|pnmx|pnlr|pnlx)(\d{14}|\d+\.\d+\.\d+)$/.exec(tag);
+  if (plugin) {
+    return timestampRelease(
+      tag,
+      plugin[1],
+      plugin[2],
+      "plugin",
+      NATIVE_PREFIXES[plugin[1].slice(1)],
+      { withPallas: false, withMeowcore: false }
+    );
+  }
+  const native = /^(nlr|nlx|nmr|nmx|nw)(\d{14}|\d+\.\d+\.\d+)$/.exec(tag);
   if (native) {
-    const version = native[2];
-    return {
-      channel: "native",
-      prefix: native[1],
-      platform: NATIVE_PREFIXES[native[1]],
-      version,
-      sourceTag: productSourceTag(version),
-      releaseTag: tag,
-      withPallas: false,
-      withMeowcore: true,
-    };
+    return timestampRelease(
+      tag,
+      native[1],
+      native[2],
+      "native",
+      NATIVE_PREFIXES[native[1]],
+      { withPallas: false, withMeowcore: true }
+    );
   }
   const desktop = /^(am|al|aw)(\d+\.\d+\.\d+)$/.exec(tag);
   if (desktop) {
@@ -76,6 +106,7 @@ function resolveProductTag(ref) {
       platform: DESKTOP_PREFIXES[desktop[1]],
       version,
       sourceTag: productSourceTag(version),
+      sourceMode: "tag",
       releaseTag: `a${version}`,
       withPallas: true,
       withMeowcore: true,
@@ -90,6 +121,7 @@ function resolveProductTag(ref) {
       platform: DOCKER_PREFIXES[docker[1]],
       version,
       sourceTag: productSourceTag(version),
+      sourceMode: "tag",
       releaseTag: tag,
       withPallas: false,
       withMeowcore: true,
@@ -111,6 +143,7 @@ if (require.main === module) {
     process.stdout.write(`platform=${result.platform}\n`);
     process.stdout.write(`version=${result.version}\n`);
     process.stdout.write(`sourceTag=${result.sourceTag}\n`);
+    process.stdout.write(`sourceMode=${result.sourceMode}\n`);
     process.stdout.write(`releaseTag=${result.releaseTag}\n`);
     process.stdout.write(`withPallas=${result.withPallas}\n`);
     process.stdout.write(`withMeowcore=${result.withMeowcore}\n`);

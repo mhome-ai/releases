@@ -47,7 +47,7 @@ require_mhome_clone() {
 
 read_product_tag() {
   local tag="$1" line
-  unset PRODUCT_CHANNEL PRODUCT_PREFIX PRODUCT_PLATFORM PRODUCT_VERSION PRODUCT_SOURCE_TAG PRODUCT_RELEASE_TAG
+  unset PRODUCT_CHANNEL PRODUCT_PREFIX PRODUCT_PLATFORM PRODUCT_VERSION PRODUCT_SOURCE_TAG PRODUCT_SOURCE_MODE PRODUCT_RELEASE_TAG
   while IFS= read -r line; do
     case "$line" in
       channel=*) PRODUCT_CHANNEL="${line#channel=}" ;;
@@ -55,18 +55,34 @@ read_product_tag() {
       platform=*) PRODUCT_PLATFORM="${line#platform=}" ;;
       version=*) PRODUCT_VERSION="${line#version=}" ;;
       sourceTag=*) PRODUCT_SOURCE_TAG="${line#sourceTag=}" ;;
+      sourceMode=*) PRODUCT_SOURCE_MODE="${line#sourceMode=}" ;;
       releaseTag=*) PRODUCT_RELEASE_TAG="${line#releaseTag=}" ;;
     esac
   done < <(node "$CI_ROOT/resolve-product-tag.js" --ref "$tag")
   [ -n "${PRODUCT_VERSION:-}" ] || fail "could not parse product tag $tag"
 }
 
+read_product_source_commit() {
+  local field="$1" repository="$2"
+  node -e '
+    const fs = require("fs");
+    const pin = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    const entry = pin[process.argv[2]];
+    if (!entry || entry.repository !== process.argv[3] || !/^[0-9a-f]{40}$/.test(entry.commit || "")) {
+      console.error("sources/product-sources.json is missing a full SHA for " + process.argv[2]);
+      process.exit(1);
+    }
+    process.stdout.write(entry.commit);
+  ' "$RELEASES_DIR/sources/product-sources.json" "$field" "$repository"
+}
+
 prepare_product_sources() {
-  local extra=() mode="match" out
+  local extra=() mode="match" baycat_commit="" out
   while [ $# -gt 0 ]; do
     case "$1" in
       --with-meowcore|--with-pallas) extra+=("$1") ;;
       --baycat-version-mode) mode="${2:?}"; shift ;;
+      --baycat-commit) baycat_commit="${2:?}"; shift ;;
       *) fail "unknown prepare argument: $1" ;;
     esac
     shift
@@ -74,11 +90,20 @@ prepare_product_sources() {
   out="$(mktemp)"
   # ${extra[@]+...} stays silent when extra is empty; "${extra[@]}" is unbound
   # on macOS Bash 3.2 with set -u (install channel has no --with-* flags).
-  node "$CI_ROOT/prepare-release-sources.js" \
-    --version "$PRODUCT_VERSION" \
-    --work-id "$WORK_ID" \
-    --baycat-version-mode "$mode" \
-    ${extra[@]+"${extra[@]}"} >"$out"
+  if [ -n "$baycat_commit" ]; then
+    node "$CI_ROOT/prepare-release-sources.js" \
+      --version "$PRODUCT_VERSION" \
+      --work-id "$WORK_ID" \
+      --baycat-version-mode commit \
+      --baycat-commit "$baycat_commit" \
+      ${extra[@]+"${extra[@]}"} >"$out"
+  else
+    node "$CI_ROOT/prepare-release-sources.js" \
+      --version "$PRODUCT_VERSION" \
+      --work-id "$WORK_ID" \
+      --baycat-version-mode "$mode" \
+      ${extra[@]+"${extra[@]}"} >"$out"
+  fi
   while IFS= read -r line; do
     case "$line" in
       baycat_dir=*) BAYCAT_DIR="${line#baycat_dir=}" ;;

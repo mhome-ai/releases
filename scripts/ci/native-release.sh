@@ -22,8 +22,24 @@ cleanup() {
 }
 trap cleanup EXIT
 
-prepare_product_sources --with-meowcore --baycat-version-mode match
+baycat_commit="$(read_product_source_commit baycat mhome-ai/baycat)"
+prepare_product_sources --with-meowcore --baycat-commit "$baycat_commit"
 cd "$BAYCAT_DIR"
+node -e "require('./scripts/lib/app-component-state').assertLockedFingerprints()"
+node -e '
+  const fs = require("fs");
+  const { buildAppComponentFingerprints, readAppComponentsConfig } = require("./scripts/lib/app-component-state");
+  const { loadRuntimeComponents } = require("./scripts/release/native/runtime-components");
+  const fingerprints = buildAppComponentFingerprints(readAppComponentsConfig().components, { requireReleaseExternal: true });
+  const out = {};
+  for (const component of loadRuntimeComponents()) {
+    const fingerprint = fingerprints.get(component.appComponentId);
+    if (!fingerprint) throw new Error("missing fingerprint for " + component.id);
+    out[component.id] = fingerprint.sha256;
+  }
+  fs.mkdirSync("build/runtime-catalog", { recursive: true });
+  fs.writeFileSync("build/runtime-catalog/fingerprints.json", JSON.stringify(out));
+'
 
 case "$PRODUCT_PLATFORM" in
   darwin-arm64|darwin-x64)
@@ -121,9 +137,18 @@ node scripts/release/native/generate-runtime-catalog.js \
   --agent-revision "$(node -p 'require("../meowcore-rust/release/sources/agent.json").commit')" \
   --assets-dir build/native-runtime-assets \
   --runtime-alternatives true \
+  --fingerprints build/runtime-catalog/fingerprints.json \
+  --decision-output build/runtime-catalog/publish-decision.txt \
+  --notes-output build/runtime-catalog/release-notes.md \
   --output build/runtime-catalog/catalog.json \
   --publish-assets-output build/runtime-catalog/publish-assets.txt \
   ${previous_args[@]+"${previous_args[@]}"}
+
+decision="$(tr -d "[:space:]" < build/runtime-catalog/publish-decision.txt)"
+if [ "$decision" = "unchanged" ]; then
+  echo "No component version advanced; catalog unchanged."
+  exit 0
+fi
 
 printf '%s' "$RUNTIME_CATALOG_PRIVATE_KEY_B64" | base64 --decode > build/runtime-catalog/catalog.key
 minisign -Sm build/runtime-catalog/catalog.json \
@@ -151,7 +176,7 @@ if ! gh release view "$PRODUCT_RELEASE_TAG" --repo "$repo" >/dev/null 2>&1; then
     --draft \
     --latest=false \
     --title "MeowLink Runtime ${PRODUCT_VERSION}" \
-    --notes "Native MeowLink runtime ${PRODUCT_VERSION}"
+    --notes-file build/runtime-catalog/release-notes.md
 fi
 is_draft="$(gh release view "$PRODUCT_RELEASE_TAG" --repo "$repo" --json isDraft --jq .isDraft)"
 if [ "$is_draft" = "true" ]; then

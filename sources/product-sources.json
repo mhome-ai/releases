@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "baycat": {
+    "repository": "mhome-ai/baycat",
+    "commit": "945774d23d25378517128d8f0e018b0e6416d89c"
+  },
+  "plugin": {
+    "repository": "mhome-ai/plugin",
+    "commit": "d115d982fae124746a1eb3c5a6e1c2648c67a923"
+  }
+}

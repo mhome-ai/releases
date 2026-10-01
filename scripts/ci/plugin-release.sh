@@ -18,7 +18,8 @@ cleanup() {
 }
 trap cleanup EXIT
 prepared="$(mktemp)"
-node "$CI_ROOT/prepare-plugin-sources.js" --version "$PRODUCT_VERSION" --work-id "$WORK_ID" > "$prepared"
+plugin_commit="$(read_product_source_commit plugin mhome-ai/plugin)"
+node "$CI_ROOT/prepare-plugin-sources.js" --version "$PRODUCT_VERSION" --commit "$plugin_commit" --work-id "$WORK_ID" > "$prepared"
 while IFS= read -r line; do
   case "$line" in
     plugin_dir=*) PLUGIN_DIR="${line#plugin_dir=}" ;;
@@ -79,7 +80,14 @@ else
     --orchestrator-revision "$(git -C "$RELEASES_DIR" rev-parse HEAD)" \
     --workflow-run-url "${GITHUB_SERVER_URL:-https://github.com}/${repo}/actions/runs/${GITHUB_RUN_ID:?}" \
     --assets-dir "$assets_dir" --runtime-alternatives true --output "$catalog_dir/catalog.json" \
+    --decision-output "$catalog_dir/publish-decision.txt" \
+    --notes-output "$catalog_dir/release-notes.md" \
     --publish-assets-output "$catalog_dir/publish-assets.txt" ${previous_args[@]+"${previous_args[@]}"}
+  decision="$(tr -d '[:space:]' < "$catalog_dir/publish-decision.txt")"
+  if [ "$decision" = "unchanged" ]; then
+    echo "No plugin version advanced; catalog unchanged."
+    exit 0
+  fi
   (umask 077; printf '%s' "$PLUGIN_CATALOG_PRIVATE_KEY_B64" | base64 --decode > "$catalog_dir/catalog.key")
   minisign -Sm "$catalog_dir/catalog.json" -s "$catalog_dir/catalog.key" -x "$catalog_dir/catalog.json.minisig"
   rm -f "$catalog_dir/catalog.key"
@@ -88,7 +96,7 @@ else
     -P "$(node scripts/release/native/catalog-config.js public-key)"
   if [ "$exists" != true ]; then
     gh release create "$PRODUCT_RELEASE_TAG" --repo "$repo" --draft --latest=false \
-      --title "MeowLink Plugins $PRODUCT_VERSION" --notes "Official plugin packages $PRODUCT_VERSION"
+      --title "MeowLink Plugins $PRODUCT_VERSION" --notes-file "$catalog_dir/release-notes.md"
   fi
   while IFS= read -r name; do
     [ -z "$name" ] || upload_github_release_asset_if_changed "$PRODUCT_RELEASE_TAG" "$repo" "$assets_dir/$name"

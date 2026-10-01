@@ -2,14 +2,29 @@ const fs = require("node:fs");
 function verifyPromotion(currentBytes, nextBytes) {
   const current = JSON.parse(currentBytes);
   const next = JSON.parse(nextBytes);
-  const version = (value) => {
-    if (!/^\d+\.\d+\.\d+$/.test(value || ""))
-      throw new Error("Invalid stable release version");
-    return value.split(".").map(Number);
+  const generation = (value) => {
+    if (/^\d{14}$/.test(value || "")) return { kind: "stamp", value };
+    if (/^\d+\.\d+\.\d+$/.test(value || "")) {
+      return { kind: "semver", parts: value.split(".").map(Number) };
+    }
+    throw new Error("Invalid stable release version");
   };
-  const left = version(current.releaseVersion || current.productVersion),
-    right = version(next.releaseVersion || next.productVersion);
-  const difference = right.map((n, i) => n - left[i]).find((n) => n !== 0) || 0;
+  const compare = (older, newer) => {
+    if (older.kind === "stamp" && newer.kind === "stamp") {
+      if (older.value === newer.value) return 0;
+      return older.value < newer.value ? 1 : -1;
+    }
+    if (older.kind === "semver" && newer.kind === "stamp") return 1;
+    if (older.kind === "stamp" && newer.kind === "semver") return -1;
+    return (
+      newer.parts.map((part, index) => part - older.parts[index]).find((part) => part !== 0) ||
+      0
+    );
+  };
+  const difference = compare(
+    generation(current.releaseVersion || current.productVersion),
+    generation(next.releaseVersion || next.productVersion)
+  );
   if (
     current.kind !== next.kind ||
     current.channel !== next.channel ||

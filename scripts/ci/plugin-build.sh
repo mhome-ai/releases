@@ -21,7 +21,8 @@ cleanup() {
 }
 trap cleanup EXIT
 prepared="$(mktemp)"
-node "$CI_ROOT/prepare-plugin-sources.js" --version "$PRODUCT_VERSION" --work-id "$WORK_ID" > "$prepared"
+plugin_commit="$(read_product_source_commit plugin mhome-ai/plugin)"
+node "$CI_ROOT/prepare-plugin-sources.js" --version "$PRODUCT_VERSION" --commit "$plugin_commit" --work-id "$WORK_ID" > "$prepared"
 while IFS= read -r line; do
   case "$line" in plugin_dir=*) PLUGIN_DIR="${line#plugin_dir=}" ;; plugin_revision=*) PLUGIN_REVISION="${line#plugin_revision=}" ;; esac
 done < "$prepared"

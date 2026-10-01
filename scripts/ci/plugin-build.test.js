@@ -33,12 +33,18 @@ for (const failQuality of [false, true]) test(`build cleanup preserves the publi
   }
   git(source, 'add', '.');
   git(source, 'commit', '-m', 'source');
-  git(source, 'tag', '-a', 'v1.0.5', '-m', 'source freeze');
   fs.mkdirSync(mhome, { recursive: true });
   git(temp, 'clone', source, path.join(mhome, 'plugin'));
+  const pluginCommit = git(source, 'rev-parse', 'HEAD');
   const orchestrator = path.join(work, 'releases');
   init(orchestrator);
-  git(orchestrator, 'commit', '--allow-empty', '-m', 'orchestrator');
+  fs.mkdirSync(path.join(orchestrator, 'sources'), { recursive: true });
+  fs.writeFileSync(path.join(orchestrator, 'sources', 'product-sources.json'), JSON.stringify({
+    schemaVersion: 1,
+    plugin: { repository: 'mhome-ai/plugin', commit: pluginCommit },
+  }));
+  git(orchestrator, 'add', '.');
+  git(orchestrator, 'commit', '-m', 'pin plugin source');
   const bin = path.join(temp, 'bin');
   fs.mkdirSync(bin);
   fs.writeFileSync(path.join(bin, 'curl'), '#!/bin/sh\nwhile [ "$#" -gt 0 ]; do if [ "$1" = --output ]; then shift; printf missing > "$1"; fi; shift; done\nprintf 404\n', { mode: 0o755 });
@@ -48,12 +54,12 @@ for (const failQuality of [false, true]) test(`build cleanup preserves the publi
   const handoff = path.join(temp, 'handoff');
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, NODE_OPTIONS: `--require=${homeOverride}`,
     MHOME_ROOT: mhome, WORK_ROOT: work, WORK_ID: 'fixture', RELEASES_DIR: orchestrator,
-    RELEASE_TAG: 'pnmr1.0.5', WORK_SUFFIX: 'darwin-arm64', PLUGIN_HANDOFF: handoff, INITIALIZE_CATALOG: 'true' };
+    RELEASE_TAG: 'pnmr20261001121600', WORK_SUFFIX: 'darwin-arm64', PLUGIN_HANDOFF: handoff, INITIALIZE_CATALOG: 'true' };
   for (const key of ['PLUGIN_CATALOG_PRIVATE_KEY_B64', 'APPLE_CSC_LINK', 'APPLE_CSC_KEY_PASSWORD', 'AWS_SECRET_ACCESS_KEY']) delete env[key];
   const result = spawnSync('bash', [path.join(__dirname, 'plugin-build.sh')], { env, encoding: 'utf8' });
   assert.equal(result.status, failQuality ? 1 : 0, result.stderr + result.stdout);
   assert.equal(fs.existsSync(path.join(work, 'plugin')), false);
   assert.equal(fs.existsSync(path.join(orchestrator, '.git')), true);
   assert.equal(git(path.join(mhome, 'plugin'), 'worktree', 'list', '--porcelain').match(/^worktree /gm).length, 1);
-  if (!failQuality) await verifyHandoff(handoff, git(source, 'rev-parse', 'HEAD'), git(orchestrator, 'rev-parse', 'HEAD'), 'pnmr1.0.5');
+  if (!failQuality) await verifyHandoff(handoff, pluginCommit, git(orchestrator, 'rev-parse', 'HEAD'), 'pnmr20261001121600');
 });

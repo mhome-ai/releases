@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Product tag, for example pdlx1.2.3"
+        description: "Product tag, for example pdlx20261001121600"
         required: true
         type: string
       initialize_catalog:

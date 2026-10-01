@@ -7,19 +7,20 @@ const {
   PRODUCT_REPOS,
   canonicalClonePath,
   releaseWorkRoot,
-  productSourceTag,
 } = require("./mhome-root");
 const {
-  fetchTag,
+  fetchCommit,
   requireExistingClone,
   printOutputs,
 } = require("./prepare-release-sources");
 
-function preparePluginSources({ version, workId, home = os.homedir() }) {
+function preparePluginSources({ version, commit, workId, home = os.homedir() }) {
+  if (!/^[0-9a-f]{40}$/.test(commit || "")) {
+    throw new Error("Plugin source commit is required");
+  }
   const clone = canonicalClonePath("plugin", home);
   requireExistingClone(PRODUCT_REPOS.plugin, clone);
-  const tag = productSourceTag(version);
-  const revision = fetchTag(clone, tag);
+  const revision = fetchCommit(clone, commit);
   require("./verify-plugin-source").verifyPluginSource(clone, revision);
   const directory = path.join(releaseWorkRoot(workId, home), "plugin");
   if (fs.existsSync(directory))
@@ -34,23 +35,22 @@ function preparePluginSources({ version, workId, home = os.homedir() }) {
     directory,
     revision,
   ]);
-  const packageFile = JSON.parse(
-    fs.readFileSync(path.join(directory, "package.json"))
-  );
-  if (packageFile.version !== version)
-    throw new Error(
-      "Plugin source package version does not match the frozen tag"
-    );
-  return { plugin_dir: directory, plugin_revision: revision, source_tag: tag };
+  void version;
+  return { plugin_dir: directory, plugin_revision: revision, source_tag: "" };
 }
 if (require.main === module) {
   try {
     const { values } = parseArgs({
-      options: { version: { type: "string" }, "work-id": { type: "string" } },
+      options: {
+        version: { type: "string" },
+        commit: { type: "string" },
+        "work-id": { type: "string" },
+      },
     });
     printOutputs(
       preparePluginSources({
         version: values.version,
+        commit: values.commit,
         workId: values["work-id"],
       })
     );

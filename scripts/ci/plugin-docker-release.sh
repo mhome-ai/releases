@@ -18,7 +18,8 @@ cleanup() {
 }
 trap cleanup EXIT
 prepared="$(mktemp)"
-node "$CI_ROOT/prepare-plugin-sources.js" --version "$PRODUCT_VERSION" --work-id "$WORK_ID" > "$prepared"
+plugin_commit="$(read_product_source_commit plugin mhome-ai/plugin)"
+node "$CI_ROOT/prepare-plugin-sources.js" --version "$PRODUCT_VERSION" --commit "$plugin_commit" --work-id "$WORK_ID" > "$prepared"
 while IFS= read -r line; do
   case "$line" in
     plugin_dir=*) PLUGIN_DIR="${line#plugin_dir=}" ;;
@@ -68,6 +69,10 @@ else
   node scripts/release/docker/images.js --publish-only --artifacts "$assets_dir" --platform "$PRODUCT_PLATFORM" --version "$PRODUCT_VERSION" \
     --revision "$PLUGIN_REVISION" --orchestrator-revision "$orchestrator_revision" \
     --output "$catalog_dir/catalog.json" ${previous_args[@]+"${previous_args[@]}"}
+  if [ -f "$catalog_dir/publish-decision.txt" ] && [ "$(tr -d '[:space:]' < "$catalog_dir/publish-decision.txt")" = unchanged ]; then
+    echo "No appliance image version advanced; catalog unchanged."
+    exit 0
+  fi
   (umask 077; printf '%s' "$PLUGIN_CATALOG_PRIVATE_KEY_B64" | base64 --decode > "$catalog_dir/catalog.key")
   minisign -Sm "$catalog_dir/catalog.json" -s "$catalog_dir/catalog.key" -x "$catalog_dir/catalog.json.minisig"
   rm -f "$catalog_dir/catalog.key"

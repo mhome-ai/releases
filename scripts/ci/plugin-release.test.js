@@ -10,10 +10,11 @@ test("plugin tags use independent source and release channels", () => {
     ["pnlr", "linux-arm64"],
     ["pnlx", "linux-x64"],
   ]) {
-    const result = resolveProductTag(`${prefix}1.0.5`);
+    const result = resolveProductTag(`${prefix}20261001121600`);
     assert.equal(result.channel, "plugin");
     assert.equal(result.platform, platform);
-    assert.equal(result.sourceTag, "v1.0.5");
+    assert.equal(result.sourceMode, "pin");
+    assert.equal(result.sourceTag, "");
     assert.equal(result.withMeowcore, false);
   }
 });
@@ -50,7 +51,7 @@ test("appliance tags select Plugin source and keep platform writers separate", (
     ["pdlr", "linux-arm64"],
     ["pdlx", "linux-x64"],
   ]) {
-    const tag = resolveProductTag(`${prefix}1.0.5`);
+    const tag = resolveProductTag(`${prefix}20261001121600`);
     assert.equal(tag.channel, "plugin-docker");
     assert.equal(tag.platform, platform);
     assert.equal(tag.withMeowcore, false);
