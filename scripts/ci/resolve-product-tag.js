@@ -16,11 +16,6 @@ const DESKTOP_PREFIXES = {
   aw: "windows",
 };
 
-const DOCKER_PREFIXES = {
-  dlr: "linux-arm64",
-  dlx: "linux-x64",
-};
-
 function stripRef(ref) {
   return String(ref || "").replace(/^refs\/tags\//, "");
 }
@@ -58,17 +53,6 @@ function attemptRelease(tag, prefix, body, channel, platform, extras) {
 
 function resolveProductTag(ref) {
   const tag = stripRef(ref);
-  const pluginDocker = /^(pdlr|pdlx)(\d{8}-\d{2}|\d{14}|\d+\.\d+\.\d+)$/.exec(tag);
-  if (pluginDocker) {
-    return attemptRelease(
-      tag,
-      pluginDocker[1],
-      pluginDocker[2],
-      "plugin-docker",
-      DOCKER_PREFIXES[pluginDocker[1].slice(1)],
-      { withPallas: false, withMeowcore: false }
-    );
-  }
   const plugin = /^(pnmr|pnmx|pnlr|pnlx)(\d{8}-\d{2}|\d{14}|\d+\.\d+\.\d+)$/.exec(tag);
   if (plugin) {
     return attemptRelease(
@@ -102,17 +86,6 @@ function resolveProductTag(ref) {
       { withPallas: true, withMeowcore: true }
     );
   }
-  const docker = /^(dlr|dlx)(\d{8}-\d{2}|\d+\.\d+\.\d+)$/.exec(tag);
-  if (docker) {
-    return attemptRelease(
-      tag,
-      docker[1],
-      docker[2],
-      "docker",
-      DOCKER_PREFIXES[docker[1]],
-      { withPallas: false, withMeowcore: true }
-    );
-  }
   throw new Error(`Invalid product release tag: ${tag}`);
 }
 
@@ -141,7 +114,6 @@ if (require.main === module) {
 
 module.exports = {
   DESKTOP_PREFIXES,
-  DOCKER_PREFIXES,
   NATIVE_PREFIXES,
   attemptSourceTag,
   isAttemptId,

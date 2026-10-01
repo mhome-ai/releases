@@ -46,16 +46,9 @@ test("promotion permits exact retries, rejects rollback and same-version changes
   );
 });
 
-test("appliance tags select Plugin source and keep platform writers separate", () => {
-  for (const [prefix, platform] of [
-    ["pdlr", "linux-arm64"],
-    ["pdlx", "linux-x64"],
-  ]) {
-    const tag = resolveProductTag(`${prefix}20261001-01`);
-    assert.equal(tag.channel, "plugin-docker");
-    assert.equal(tag.platform, platform);
-    assert.equal(tag.withMeowcore, false);
-  }
+test("retired appliance tags are not product tags", () => {
+  assert.throws(() => resolveProductTag("pdlr20261001-01"), /Invalid product release tag/);
+  assert.throws(() => resolveProductTag("pdlx20261001-01"), /Invalid product release tag/);
 });
 test("atomic Plugin envelope preserves exact signature input bytes", (t) => {
   const fs = require("node:fs"),

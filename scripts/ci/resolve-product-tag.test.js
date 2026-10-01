@@ -25,20 +25,16 @@ test("parses independent native platform attempt tags", () => {
   assert.throws(() => resolveProductTag("nlr20261001121600"), /YYYYMMDD-NN/);
 });
 
-test("parses desktop and docker attempt tags onto the same source snapshot", () => {
+test("parses desktop attempt tags onto the same source snapshot", () => {
   const desktop = resolveProductTag("am20261001-01");
   assert.equal(desktop.releaseTag, "am20261001-01");
   assert.equal(desktop.sourceTag, "t20261001-01");
   assert.equal(desktop.sourceMode, "attempt");
   assert.equal(desktop.withPallas, true);
   assert.equal(resolveProductTag("aw20261001-01").platform, "windows");
-  const docker = resolveProductTag("dlr20261001-01");
-  assert.equal(docker.channel, "docker");
-  assert.equal(docker.platform, "linux-arm64");
-  assert.equal(docker.sourceTag, "t20261001-01");
-  assert.equal(resolveProductTag("dlx20261001-01").platform, "linux-x64");
   assert.throws(() => resolveProductTag("am1.2.3"), /YYYYMMDD-NN/);
-  assert.throws(() => resolveProductTag("dlr1.2.3"), /YYYYMMDD-NN/);
+  assert.throws(() => resolveProductTag("dlr20261001-01"), /Invalid product release tag/);
+  assert.throws(() => resolveProductTag("pdlr20261001-01"), /Invalid product release tag/);
 });
 
 test("does not let n steal nlr or a steal am", () => {

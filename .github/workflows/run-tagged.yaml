@@ -44,7 +44,6 @@ jobs:
           INITIALIZE_CATALOG: ${{ inputs.initialize_catalog }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUNTIME_PUBLISH_ROLE_ARN: ${{ (inputs.channel == 'native' || inputs.channel == 'install') && vars.RUNTIME_PUBLISH_ROLE_ARN || '' }}
-          DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'docker' && vars.DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN || '' }}
           NATIVE_INSTALL_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'install' && vars.NATIVE_INSTALL_PUBLISH_ROLE_ARN || '' }}
           APPLE_TEAM_ID: ${{ inputs.channel == 'desktop' && vars.APPLE_TEAM_ID || '' }}
           RUNTIME_CATALOG_PRIVATE_KEY_B64: ${{ inputs.channel == 'native' && secrets.RUNTIME_CATALOG_PRIVATE_KEY_B64 || '' }}
@@ -58,11 +57,9 @@ jobs:
           SSL_COM_PASSWORD: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_PASSWORD || '' }}
           SSL_COM_CREDENTIAL_ID: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_CREDENTIAL_ID || '' }}
           SSL_COM_TOTP_SECRET: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_TOTP_SECRET || '' }}
-          DOCKER_CATALOG_PRIMARY_PRIVATE_KEY_B64: ${{ inputs.channel == 'docker' && secrets.DOCKER_CATALOG_PRIMARY_PRIVATE_KEY_B64 || '' }}
-          DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64: ${{ inputs.channel == 'docker' && secrets.DOCKER_CATALOG_SECONDARY_PRIVATE_KEY_B64 || '' }}
         run: |
           set -euo pipefail
-          case "$RELEASE_CHANNEL" in plugin|plugin-docker) echo "Plugin releases require run-tagged-plugin.yaml" >&2; exit 1 ;; esac
+          case "$RELEASE_CHANNEL" in plugin) echo "Plugin releases require run-tagged-plugin.yaml" >&2; exit 1 ;; esac
           if [ "$(uname -s)" = Darwin ]; then
             export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
           fi

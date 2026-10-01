@@ -80,14 +80,19 @@ test("run-tagged has one job and does not use GitHub Environments", () => {
   }
 });
 
-test("docker release is a complete per-platform product", () => {
-  const script = read("scripts/ci/docker-release.sh");
-  assert.match(script, /docker\/stable\/\$\{platform\}/);
-  assert.match(script, /docker\/catalogs\/\$\{version\}\/\$\{platform\}/);
-  assert.match(script, /install-meow-docker-detect\.sh/);
-  assert.match(script, /--platform "\$platform"/);
-  assert.doesNotMatch(script, /skipping Docker Catalog/);
-  assert.doesNotMatch(script, /require_cmd gh/);
+test("product docker catalogs and appliance tags are gone", () => {
+  assert.equal(fs.existsSync(path.join(ROOT, "scripts/ci/docker-release.sh")), false);
+  assert.equal(fs.existsSync(path.join(ROOT, "scripts/ci/plugin-docker-release.sh")), false);
+  for (const file of [
+    ".github/workflows/docker-linux-arm64.yaml",
+    ".github/workflows/docker-linux-amd64.yaml",
+    ".github/workflows/plugin-docker-linux-arm64.yaml",
+    ".github/workflows/plugin-docker-linux-amd64.yaml",
+  ]) {
+    assert.equal(fs.existsSync(path.join(ROOT, file)), false, file);
+  }
+  assert.doesNotMatch(read("scripts/ci/run.sh"), /plugin-docker|\bdocker\b/);
+  assert.doesNotMatch(read(".github/workflows/run-tagged.yaml"), /channel == 'docker'/);
 });
 
 test("mac native ARM and Intel share the Mac Mini runner", () => {
@@ -113,12 +118,10 @@ test("release scripts do not take a filesystem machine lock", () => {
   assert.doesNotMatch(read("scripts/ci/desktop-release.sh"), /machine-lock|macos-primary|LOCK_NAME/);
 });
 
-test("linux native, docker, and install share one Docker host lock", () => {
+test("linux native and install share one Docker host lock", () => {
   for (const file of [
     ".github/workflows/native-linux-arm64.yaml",
     ".github/workflows/native-linux-amd64.yaml",
-    ".github/workflows/docker-linux-arm64.yaml",
-    ".github/workflows/docker-linux-amd64.yaml",
     ".github/workflows/deploy-native-install-script.yaml",
   ]) {
     const text = read(file);
@@ -159,9 +162,9 @@ test("tagged orchestrator is taken from ~/.mhome/releases", () => {
   assert.match(text, /export WORK_ID=/);
   assert.match(text, /WORK_SUFFIX/);
   assert.match(text, /inputs\.channel == 'native'/);
-  assert.match(text, /inputs\.channel == 'docker'/);
+  assert.doesNotMatch(text, /inputs\.channel == 'docker'/);
   assert.match(text, /vars\.RUNTIME_PUBLISH_ROLE_ARN/);
-  assert.match(text, /vars\.DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN/);
+  assert.doesNotMatch(text, /vars\.DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN/);
   assert.match(text, /vars\.NATIVE_INSTALL_PUBLISH_ROLE_ARN/);
   assert.match(text, /vars\.APPLE_TEAM_ID/);
 });
@@ -174,7 +177,7 @@ test("install.mhome.ai URL and bucket are pinned; role ARNs come from org vars",
   assert.doesNotMatch(lib, /APPLE_TEAM_ID=/);
   const yaml = read(".github/workflows/run-tagged.yaml");
   assert.match(yaml, /vars\.RUNTIME_PUBLISH_ROLE_ARN/);
-  assert.match(yaml, /vars\.DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN/);
+  assert.doesNotMatch(yaml, /vars\.DOCKER_DISTRIBUTION_PUBLISH_ROLE_ARN/);
   assert.match(yaml, /vars\.NATIVE_INSTALL_PUBLISH_ROLE_ARN/);
   assert.match(yaml, /vars\.APPLE_TEAM_ID/);
   assert.doesNotMatch(yaml, /vars\.AWS_REGION/);
@@ -220,10 +223,6 @@ test("CI bash never expands a possibly-empty array under set -u", () => {
     read("scripts/ci/native-release.sh"),
     /\$\{previous_args\[@\]\+"\$\{previous_args\[@\]\}"\}/
   );
-  assert.match(
-    read("scripts/ci/docker-release.sh"),
-    /\$\{previous_args\[@\]\+"\$\{previous_args\[@\]\}"\}/
-  );
   assert.match(read("scripts/ci/lib.sh"), /\$\{extra\[@\]\+"\$\{extra\[@\]\}"\}/);
 });
 
@@ -255,5 +254,4 @@ test("Plugin builds and publishes on the existing runner with local artifact ver
   assert.match(read("scripts/ci/plugin-build.sh"), /quality-gate\.sh/);
   assert.match(read("scripts/ci/plugin-release.sh"), /verify-plugin-handoff\.js/);
   assert.match(read("scripts/ci/plugin-release.sh"), /--phase publish/);
-  assert.match(read("scripts/ci/plugin-docker-release.sh"), /--publish-only/);
 });
