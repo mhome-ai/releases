@@ -143,7 +143,7 @@ docker version >/dev/null
 mkdir -p build
 cp release/docker/catalog-signing-policy.json build/docker-catalog-signing-policy.json
 node scripts/release/docker/generate-meowctl-build-metadata.js \
-  --version "$PRODUCT_VERSION" \
+  --version "$version" \
   --policy build/docker-catalog-signing-policy.json \
   --output build/meowctl-release-build-metadata.json
 cp build/meowctl-release-build-metadata.json tools/meowctl/release-build-metadata.json
@@ -158,7 +158,7 @@ if [ -f build/previous-docker-catalog/catalog.json ]; then
   previous_args+=(--previous-catalog build/previous-docker-catalog/catalog.json)
 fi
 node scripts/release/docker/docker-release-plan.js \
-  --version "$PRODUCT_VERSION" \
+  --version "$version" \
   --platform "$platform" \
   --output build/docker-release-manifest.json \
   ${previous_args[@]+"${previous_args[@]}"}
