@@ -124,6 +124,8 @@ test("linux native and install share one Docker host lock", () => {
     ".github/workflows/native-linux-amd64.yaml",
     ".github/workflows/deploy-native-install-script.yaml",
     ".github/workflows/deploy-meow-compose.yaml",
+    ".github/workflows/publish-meow-image-arm64.yaml",
+    ".github/workflows/publish-meow-image-amd64.yaml",
   ]) {
     const text = read(file);
     assert.match(text, /group: linux-docker-host/, file);
@@ -141,6 +143,25 @@ test("compose project publishes onto the shared install bucket", () => {
     read(".github/workflows/run-tagged.yaml"),
     /inputs\.channel == 'install' \|\| inputs\.channel == 'compose'/
   );
+});
+
+test("host image publishes to Docker Hub and not GHCR", () => {
+  const script = read("scripts/ci/publish-image.sh");
+  const yaml = read(".github/workflows/run-tagged.yaml");
+  assert.match(read("scripts/ci/run.sh"), /image\)/);
+  assert.doesNotMatch(read("scripts/ci/run.sh"), /\bdocker\b/);
+  assert.match(script, /docker login/);
+  assert.match(script, /meowlink\/meow:latest/);
+  assert.match(script, /docker push/);
+  assert.match(script, /docker manifest push/);
+  assert.doesNotMatch(script, /ghcr\.io/);
+  assert.match(yaml, /inputs\.channel == 'image'/);
+  assert.match(yaml, /secrets\.DOCKERHUB_USERNAME/);
+  assert.match(yaml, /secrets\.DOCKERHUB_TOKEN/);
+  assert.doesNotMatch(yaml, /ghcr\.io/);
+  assert.match(read(".github/workflows/publish-meow-image-arm64.yaml"), /channel: image/);
+  assert.match(read(".github/workflows/publish-meow-image-amd64.yaml"), /channel: image/);
+  assert.match(read("scripts/ci/deploy-compose.sh"), /meowlink\/meow:latest/);
 });
 
 test("install workflow dispatches from current orchestrator SHA", () => {

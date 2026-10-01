@@ -57,6 +57,8 @@ jobs:
           SSL_COM_PASSWORD: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_PASSWORD || '' }}
           SSL_COM_CREDENTIAL_ID: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_CREDENTIAL_ID || '' }}
           SSL_COM_TOTP_SECRET: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_TOTP_SECRET || '' }}
+          DOCKERHUB_USERNAME: ${{ inputs.channel == 'image' && secrets.DOCKERHUB_USERNAME || '' }}
+          DOCKERHUB_TOKEN: ${{ inputs.channel == 'image' && secrets.DOCKERHUB_TOKEN || '' }}
         run: |
           set -euo pipefail
           case "$RELEASE_CHANNEL" in plugin) echo "Plugin releases require run-tagged-plugin.yaml" >&2; exit 1 ;; esac

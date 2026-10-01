@@ -20,5 +20,8 @@ case "$CHANNEL" in
   compose)
     bash "$HERE/deploy-compose.sh"
     ;;
+  image)
+    bash "$HERE/publish-image.sh"
+    ;;
   *) fail "unknown release channel: $CHANNEL" ;;
 esac
