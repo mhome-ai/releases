@@ -62,30 +62,11 @@ read_product_tag() {
   [ -n "${PRODUCT_VERSION:-}" ] || fail "could not parse product tag $tag"
 }
 
-read_product_source_commit() {
-  local field="$1" repository="$2"
-  node -e '
-    const fs = require("fs");
-    const pin = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-    const entry = pin[process.argv[2]];
-    if (!entry || entry.repository !== process.argv[3] || !/^[0-9a-f]{40}$/.test(entry.commit || "")) {
-      console.error("sources/product-sources.json is missing a full SHA for " + process.argv[2]);
-      process.exit(1);
-    }
-    process.stdout.write(entry.commit);
-  ' "$RELEASES_DIR/sources/product-sources.json" "$field" "$repository"
-}
-
 prepare_product_sources() {
-  local extra=() mode="match" baycat_commit="" out
-  if [ "${PRODUCT_SOURCE_MODE:-}" = "attempt" ]; then
-    mode="attempt"
-  fi
+  local extra=() out
   while [ $# -gt 0 ]; do
     case "$1" in
       --with-meowcore|--with-pallas) extra+=("$1") ;;
-      --baycat-version-mode) mode="${2:?}"; shift ;;
-      --baycat-commit) baycat_commit="${2:?}"; shift ;;
       *) fail "unknown prepare argument: $1" ;;
     esac
     shift
@@ -93,20 +74,10 @@ prepare_product_sources() {
   out="$(mktemp)"
   # ${extra[@]+...} stays silent when extra is empty; "${extra[@]}" is unbound
   # on macOS Bash 3.2 with set -u (install channel has no --with-* flags).
-  if [ -n "$baycat_commit" ]; then
-    node "$CI_ROOT/prepare-release-sources.js" \
-      --version "$PRODUCT_VERSION" \
-      --work-id "$WORK_ID" \
-      --baycat-version-mode commit \
-      --baycat-commit "$baycat_commit" \
-      ${extra[@]+"${extra[@]}"} >"$out"
-  else
-    node "$CI_ROOT/prepare-release-sources.js" \
-      --version "$PRODUCT_VERSION" \
-      --work-id "$WORK_ID" \
-      --baycat-version-mode "$mode" \
-      ${extra[@]+"${extra[@]}"} >"$out"
-  fi
+  node "$CI_ROOT/prepare-release-sources.js" \
+    --version "$PRODUCT_VERSION" \
+    --work-id "$WORK_ID" \
+    ${extra[@]+"${extra[@]}"} >"$out"
   while IFS= read -r line; do
     case "$line" in
       baycat_dir=*) BAYCAT_DIR="${line#baycat_dir=}" ;;

@@ -75,7 +75,7 @@ test("prepares sibling worktrees from product tags and leaves HEAD clones alone"
   const baycat = createOrigin(t, {
     name: "baycat",
     branch: "master",
-    tag: "v1.2.3",
+    tag: "t20261001-01",
     files: {
       "package.json": '{"version":"1.2.3"}\n',
       "scripts/release/check-foundation-pins.js": "process.exit(0);\n",
@@ -98,7 +98,7 @@ test("prepares sibling worktrees from product tags and leaves HEAD clones alone"
   provisionClone(home, "baycat", baycat, "master");
   provisionClone(home, "meowcore-rust", meowcore, "main");
   const result = prepareReleaseSources({
-    version: "1.2.3",
+    version: "20261001-01",
     workId: "nlr-test",
     withMeowcore: true,
     home,
@@ -131,13 +131,26 @@ test("prepares sibling worktrees from product tags and leaves HEAD clones alone"
   );
 });
 
+test("rejects a semver where an attempt snapshot is required", () => {
+  assert.throws(
+    () =>
+      prepareReleaseSources({
+        version: "1.2.3",
+        workId: "old-version",
+        withMeowcore: false,
+        home: os.tmpdir(),
+      }),
+    /tYYYYMMDD-NN/
+  );
+});
+
 test("fails when the runner was not provisioned with a clone", (t) => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "mhome-home-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   assert.throws(
     () =>
       prepareReleaseSources({
-        version: "1.2.3",
+        version: "20261001-01",
         workId: "missing-clone",
         withMeowcore: false,
         home,
@@ -158,12 +171,12 @@ test("fails when the product source tag is missing", (t) => {
   assert.throws(
     () =>
       prepareReleaseSources({
-        version: "1.2.3",
+        version: "20261001-01",
         workId: "missing-tag",
         withMeowcore: false,
         home,
       }),
-    /remote tag v1\.2\.3 not found/
+    /remote tag t20261001-01 not found/
   );
 });
 
@@ -173,7 +186,7 @@ test("rejects a lightweight product tag", (t) => {
   const baycat = createOrigin(t, {
     name: "baycat",
     branch: "master",
-    tag: "v1.2.3",
+    tag: "t20261001-01",
     lightweightTag: true,
     files: { "package.json": '{"version":"1.2.3"}\n' },
   });
@@ -181,7 +194,7 @@ test("rejects a lightweight product tag", (t) => {
   assert.throws(
     () =>
       prepareReleaseSources({
-        version: "1.2.3",
+        version: "20261001-01",
         workId: "light-tag",
         withMeowcore: false,
         home,

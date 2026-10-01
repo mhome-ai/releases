@@ -12,6 +12,7 @@ const {
   productSourceTag,
   releaseWorkRoot,
 } = require("./mhome-root");
+const { attemptSourceTag, isAttemptId } = require("./resolve-product-tag");
 
 function fail(message) {
   throw new Error(message);
@@ -98,18 +99,6 @@ function fetchTag(repoDir, tag) {
   return local;
 }
 
-function fetchCommit(repoDir, commit) {
-  if (!/^[0-9a-f]{40}$/.test(commit)) {
-    fail(`invalid source commit: ${commit}`);
-  }
-  git(repoDir, ["fetch", "origin", commit]);
-  const local = git(repoDir, ["rev-parse", `${commit}^{commit}`]);
-  if (local !== commit) {
-    fail(`commit ${commit} did not resolve in ${repoDir}`);
-  }
-  return local;
-}
-
 function addDetachedWorktree(repoDir, destination, tag) {
   if (fs.existsSync(destination)) {
     fail(`refusing to overwrite existing release worktree: ${destination}`);
@@ -157,42 +146,15 @@ function verifyProductPins({
   baycatDir,
   pallasDir,
   meowcoreDir,
-  baycatVersionMode = "match",
-  baycatCommit = "",
 }) {
   requireCleanWorktree("baycat", baycatDir);
-  let sourceTag = "";
-  if (baycatVersionMode === "commit") {
-    const baycatHead = git(baycatDir, ["rev-parse", "HEAD"]);
-    if (baycatHead !== baycatCommit) {
-      fail(`baycat HEAD ${baycatHead} is not pinned commit ${baycatCommit}`);
-    }
-  } else if (baycatVersionMode === "attempt") {
-    sourceTag = `t${version}`;
-    const baycatHead = git(baycatDir, ["rev-parse", "HEAD"]);
-    const baycatTag = git(baycatDir, ["rev-parse", `${sourceTag}^{commit}`]);
-    if (baycatHead !== baycatTag) {
-      fail(`baycat HEAD ${baycatHead} is not tag ${sourceTag}`);
-    }
-  } else {
-    if (baycatVersionMode === "match") {
-      const pkg = JSON.parse(
-        fs.readFileSync(path.join(baycatDir, "package.json"), "utf8")
-      );
-      if (pkg.version !== version) {
-        fail(
-          `baycat package.json version ${pkg.version} does not match ${version}`
-        );
-      }
-    }
-    sourceTag = productSourceTag(version);
-    const baycatHead = git(baycatDir, ["rev-parse", "HEAD"]);
-    const baycatTag = git(baycatDir, ["rev-parse", `${sourceTag}^{commit}`]);
-    if (baycatHead !== baycatTag) {
-      fail(`baycat HEAD ${baycatHead} is not tag ${sourceTag}`);
-    }
+  const sourceTag = attemptSourceTag(version);
+  const baycatHead = git(baycatDir, ["rev-parse", "HEAD"]);
+  const baycatTag = git(baycatDir, ["rev-parse", `${sourceTag}^{commit}`]);
+  if (baycatHead !== baycatTag) {
+    fail(`baycat HEAD ${baycatHead} is not tag ${sourceTag}`);
   }
-  if (baycatVersionMode !== "commit" && pallasDir) {
+  if (pallasDir) {
     requireCleanWorktree("pallas-cat", pallasDir);
     const head = git(pallasDir, ["rev-parse", "HEAD"]);
     const tagged = git(pallasDir, ["rev-parse", `${sourceTag}^{commit}`]);
@@ -252,7 +214,7 @@ function writeProvenance({
     pallasCat: pallasDir
       ? {
           repository: PRODUCT_REPOS["pallas-cat"].repository,
-          tag: productSourceTag(version),
+          tag: sourceTag,
           revision: revision(pallasDir),
         }
       : null,
@@ -276,8 +238,6 @@ function prepareReleaseSources({
   workId,
   withMeowcore = true,
   withPallas = false,
-  baycatVersionMode = "match",
-  baycatCommit = "",
   home = os.homedir(),
   workflowRunUrl = process.env.GITHUB_SERVER_URL &&
     process.env.GITHUB_REPOSITORY &&
@@ -286,11 +246,10 @@ function prepareReleaseSources({
     : "",
   runAttempt = process.env.GITHUB_RUN_ATTEMPT || "",
 } = {}) {
-  const sourceTag = baycatCommit
-    ? ""
-    : baycatVersionMode === "attempt"
-      ? `t${version}`
-      : productSourceTag(version);
+  if (!isAttemptId(version)) {
+    fail(`release source is a tYYYYMMDD-NN snapshot, not ${version}`);
+  }
+  const sourceTag = attemptSourceTag(version);
   const workRoot = releaseWorkRoot(workId, home);
   const baycatClone = canonicalClonePath("baycat", home);
   const meowcoreClone = canonicalClonePath("meowcore-rust", home);
@@ -300,13 +259,8 @@ function prepareReleaseSources({
   const pallasDir = withPallas ? path.join(workRoot, "pallas-cat") : "";
 
   requireExistingClone(PRODUCT_REPOS.baycat, baycatClone);
-  if (baycatCommit) {
-    fetchCommit(baycatClone, baycatCommit);
-    addDetachedWorktree(baycatClone, baycatDir, baycatCommit);
-  } else {
-    fetchTag(baycatClone, sourceTag);
-    addDetachedWorktree(baycatClone, baycatDir, sourceTag);
-  }
+  fetchTag(baycatClone, sourceTag);
+  addDetachedWorktree(baycatClone, baycatDir, sourceTag);
 
   if (withPallas) {
     requireExistingClone(PRODUCT_REPOS["pallas-cat"], pallasClone);
@@ -331,8 +285,6 @@ function prepareReleaseSources({
     baycatDir,
     pallasDir: pallasDir || undefined,
     meowcoreDir: meowcoreDir || undefined,
-    baycatVersionMode,
-    baycatCommit,
   });
   if (meowcoreDir) {
     verifyFoundationPins(baycatDir, meowcoreDir);
@@ -418,8 +370,6 @@ if (require.main === module) {
         "work-id": { type: "string" },
         "with-meowcore": { type: "boolean", default: false },
         "with-pallas": { type: "boolean", default: false },
-        "baycat-version-mode": { type: "string", default: "match" },
-        "baycat-commit": { type: "string" },
       },
     });
     const workId =
@@ -439,8 +389,6 @@ if (require.main === module) {
       workId,
       withMeowcore: values["with-meowcore"],
       withPallas: values["with-pallas"],
-      baycatVersionMode: values["baycat-version-mode"],
-      baycatCommit: values["baycat-commit"] || "",
     });
     printOutputs(outputs);
   } catch (error) {
@@ -450,7 +398,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  fetchCommit,
   fetchTag,
   prepareReleaseSources,
   printOutputs,
