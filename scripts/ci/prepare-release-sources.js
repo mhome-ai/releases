@@ -127,6 +127,29 @@ function readMeowcorePin(baycatDir) {
   };
 }
 
+function readPallasPin(baycatDir) {
+  const dependenciesPath = path.join(
+    baycatDir,
+    "release/sources/dependencies.json"
+  );
+  const dependencies = JSON.parse(fs.readFileSync(dependenciesPath, "utf8"));
+  const pin = dependencies.sources?.pallasCat;
+  if (!pin?.version || !pin.commit) {
+    fail("baycat release/sources/dependencies.json is missing pallasCat");
+  }
+  if (!/^\d+\.\d+\.\d+$/.test(pin.version)) {
+    fail(`pallasCat.version must be X.Y.Z, got ${pin.version}`);
+  }
+  if (!/^[0-9a-f]{40}$/.test(pin.commit)) {
+    fail("pallasCat.commit must be a full 40-character SHA");
+  }
+  return {
+    tag: productSourceTag(pin.version),
+    commit: pin.commit,
+    version: pin.version,
+  };
+}
+
 function requireCleanWorktree(name, directory) {
   if (!fs.existsSync(path.join(directory, ".git"))) {
     fail(`${name} is not a Git checkout: ${directory}`);
@@ -155,11 +178,20 @@ function verifyProductPins({
     fail(`baycat HEAD ${baycatHead} is not tag ${sourceTag}`);
   }
   if (pallasDir) {
+    const pin = readPallasPin(baycatDir);
     requireCleanWorktree("pallas-cat", pallasDir);
     const head = git(pallasDir, ["rev-parse", "HEAD"]);
-    const tagged = git(pallasDir, ["rev-parse", `${sourceTag}^{commit}`]);
-    if (head !== tagged) {
-      fail(`pallas-cat HEAD ${head} is not tag ${sourceTag}`);
+    const tagged = git(pallasDir, ["rev-parse", `${pin.tag}^{commit}`]);
+    if (head !== tagged || head !== pin.commit) {
+      fail(`pallas-cat HEAD ${head} is not ${pin.tag} ${pin.commit}`);
+    }
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(pallasDir, "package.json"), "utf8")
+    );
+    if (manifest.version !== pin.version) {
+      fail(
+        `pallas-cat package.json version ${manifest.version} is not ${pin.version}`
+      );
     }
   }
   if (meowcoreDir) {
@@ -178,6 +210,7 @@ function writeProvenance({
   agentSource,
   version,
   sourceTag = "",
+  pallasTag = "",
   baycatDir,
   pallasDir,
   meowcoreDir,
@@ -214,7 +247,7 @@ function writeProvenance({
     pallasCat: pallasDir
       ? {
           repository: PRODUCT_REPOS["pallas-cat"].repository,
-          tag: sourceTag,
+          tag: pallasTag || null,
           revision: revision(pallasDir),
         }
       : null,
@@ -262,10 +295,17 @@ function prepareReleaseSources({
   fetchTag(baycatClone, sourceTag);
   addDetachedWorktree(baycatClone, baycatDir, sourceTag);
 
+  let pallasPin = null;
   if (withPallas) {
+    pallasPin = readPallasPin(baycatDir);
     requireExistingClone(PRODUCT_REPOS["pallas-cat"], pallasClone);
-    fetchTag(pallasClone, sourceTag);
-    addDetachedWorktree(pallasClone, pallasDir, sourceTag);
+    const pallasCommit = fetchTag(pallasClone, pallasPin.tag);
+    if (pallasCommit !== pallasPin.commit) {
+      fail(
+        `pallas-cat ${pallasPin.tag} is ${pallasCommit}, dependencies.json requires ${pallasPin.commit}`
+      );
+    }
+    addDetachedWorktree(pallasClone, pallasDir, pallasPin.tag);
   }
 
   if (withMeowcore) {
@@ -294,6 +334,7 @@ function prepareReleaseSources({
     agentSource,
     version,
     sourceTag,
+    pallasTag: pallasPin?.tag || "",
     baycatDir,
     pallasDir: pallasDir || undefined,
     meowcoreDir: meowcoreDir || undefined,

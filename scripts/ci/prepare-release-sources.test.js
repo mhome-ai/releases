@@ -131,6 +131,59 @@ test("prepares sibling worktrees from product tags and leaves HEAD clones alone"
   );
 });
 
+test("checks out the Pallas version pinned by the Baycat snapshot", (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "mhome-home-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const pallas = createOrigin(t, {
+    name: "pallas",
+    branch: "master",
+    tag: "v0.2.1",
+    files: { "package.json": '{"version":"0.2.1"}\n' },
+  });
+  const baycat = createOrigin(t, {
+    name: "baycat",
+    branch: "master",
+    tag: "t20261001-01",
+    files: {
+      "package.json": '{"version":"1.2.3"}\n',
+      "scripts/release/check-foundation-pins.js": "process.exit(0);\n",
+      "release/sources/dependencies.json": `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          sources: {
+            pallasCat: {
+              repository: "mhome-ai/pallas-cat",
+              version: "0.2.1",
+              commit: pallas.commit,
+            },
+          },
+        },
+        null,
+        2
+      )}\n`,
+    },
+  });
+  provisionClone(home, "baycat", baycat, "master");
+  provisionClone(home, "pallas-cat", pallas, "master");
+  const result = prepareReleaseSources({
+    version: "20261001-01",
+    workId: "desktop-pallas",
+    withMeowcore: false,
+    withPallas: true,
+    home,
+  });
+  assert.equal(git(result.pallas_dir, "rev-parse", "HEAD"), pallas.commit);
+  const provenance = JSON.parse(
+    fs.readFileSync(
+      path.join(result.baycat_dir, "build/release-source-provenance.json"),
+      "utf8"
+    )
+  );
+  assert.equal(provenance.pallasCat.tag, "v0.2.1");
+  assert.equal(provenance.baycat.tag, "t20261001-01");
+  cleanupReleaseSources(result.source_root, home);
+});
+
 test("rejects a semver where an attempt snapshot is required", () => {
   assert.throws(
     () =>

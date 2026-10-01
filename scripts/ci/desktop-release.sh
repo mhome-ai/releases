@@ -85,7 +85,7 @@ case "$PRODUCT_PREFIX" in
     SIGNING_KEYCHAIN=1
     bash "$CI_ROOT/macos-signing-keychain.sh" acquire desktop
     bash scripts/release/mac/check-mac-runner.sh
-    bash scripts/ci/ci-install-release-deps.sh "$APP_VERSION" "$PRODUCT_SOURCE_TAG"
+    bash scripts/ci/ci-install-release-deps.sh "$APP_VERSION"
     verify_macos_runtime_catalog
     bash scripts/release/mac/preflight-mac-release.sh --tag "$PRODUCT_SOURCE_TAG" --sign-smoke
     bash scripts/release/mac/mac-release-persist.sh prepare-run \
@@ -103,7 +103,7 @@ case "$PRODUCT_PREFIX" in
   aw)
     require_cmd java curl powershell.exe
     sh scripts/release/mac/audit-mac-release-scripts.sh
-    bash scripts/ci/ci-install-release-deps.sh "$APP_VERSION" "$PRODUCT_SOURCE_TAG"
+    bash scripts/ci/ci-install-release-deps.sh "$APP_VERSION"
     install_windows_codesign
     npm run tauri:build:signed
     verify_windows_installer

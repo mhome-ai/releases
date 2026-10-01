@@ -6,10 +6,11 @@ repository. This git tree is the release orchestrator only.
 ## How a release is cut
 
 1. Snapshot tags are `tYYYYMMDD-NN` in UTC, for example `t20261001-01`.
-   Tag Baycat when this attempt publishes native or desktop. Tag
-   Pallas as well for desktop. Tag Plugin when this attempt publishes plugins.
+   Tag Baycat when this attempt publishes native or desktop. Desktop checks
+   out the Pallas `vX.Y.Z` named in Baycat `release/sources/dependencies.json`.
+   Tag Plugin when this attempt publishes plugins.
    `node scripts/ci/next-attempt-tag.js --repo mhome-ai/baycat` prints the next
-   tag. Real versions stay in source. MeowCore and Agent keep `vX.Y.Z`.
+   tag. Real versions stay in source. MeowCore, Agent, and Pallas keep `vX.Y.Z`.
 2. Push one platform tag on **this** repo, using that same attempt as the
    suffix: `nmr20261001-01`, `am20261001-01`, `pnmr20261001-01`. The workflow checks out `t20261001-01` from the source
    repo that owns the channel. A component or app whose version did not
