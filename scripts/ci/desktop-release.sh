@@ -101,6 +101,7 @@ case "$PRODUCT_PREFIX" in
     ;;
   aw)
     require_cmd java curl powershell.exe
+    sh scripts/release/mac/audit-mac-release-scripts.sh
     bash scripts/ci/ci-install-release-deps.sh "$PRODUCT_VERSION"
     install_windows_codesign
     npm run tauri:build:signed

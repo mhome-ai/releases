@@ -150,6 +150,14 @@ if [ "$decision" = "unchanged" ]; then
   exit 0
 fi
 
+if [ "$PRODUCT_PLATFORM" = "darwin-arm64" ]; then
+  npm ci --no-audit --no-fund
+  unset CARGO_TARGET_DIR
+  npm run test:component:lint
+  npm run test:component:unit
+  npm run test:component -- core
+fi
+
 printf '%s' "$RUNTIME_CATALOG_PRIVATE_KEY_B64" | base64 --decode > build/runtime-catalog/catalog.key
 minisign -Sm build/runtime-catalog/catalog.json \
   -s build/runtime-catalog/catalog.key \

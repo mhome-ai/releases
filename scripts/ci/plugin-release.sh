@@ -4,6 +4,32 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib.sh"
 read_product_tag "${RELEASE_TAG:?RELEASE_TAG is required}"
 [ "$PRODUCT_CHANNEL" = plugin ] || fail "Expected a Plugin Native release tag"
+
+run_plugin_component_tests() {
+  local component_failed=0
+  export BAYCAT_ROOT="$BAYCAT_DIR"
+  unset CARGO_TARGET_DIR
+  run_node() {
+    if npm run test:component -- node "$1"; then
+      return 0
+    fi
+    node e2e/run.js diagnostics "$1" || true
+    component_failed=1
+  }
+  run_node storage
+  run_node matter
+  run_node mac
+  run_node audiobridge
+  for suite in camera llm; do
+    if npm run test:component -- node "$suite"; then
+      continue
+    fi
+    node e2e/run.js diagnostics "$suite" || true
+    echo "::warning::$suite component tests failed and do not block this release"
+  done
+  npm run test:component:unit
+  [ "$component_failed" -eq 0 ] || fail "Plugin component tests failed"
+}
 require_mhome_clone plugin
 require_mhome_clone releases
 require_cmd git node npm gh curl minisign python3 aws
@@ -87,6 +113,17 @@ else
   if [ "$decision" = "unchanged" ]; then
     echo "No plugin version advanced; catalog unchanged."
     exit 0
+  fi
+  if [ "$PRODUCT_PLATFORM" = "darwin-arm64" ]; then
+    require_mhome_clone baycat
+    require_mhome_clone meowcore-rust
+    require_mhome_clone agent
+    require_cmd cargo
+    baycat_commit="$(read_product_source_commit baycat mhome-ai/baycat)"
+    prepare_product_sources --with-meowcore --baycat-commit "$baycat_commit"
+    npm ci --no-audit --no-fund
+    npm --prefix "$BAYCAT_DIR" ci --no-audit --no-fund
+    run_plugin_component_tests
   fi
   (umask 077; printf '%s' "$PLUGIN_CATALOG_PRIVATE_KEY_B64" | base64 --decode > "$catalog_dir/catalog.key")
   minisign -Sm "$catalog_dir/catalog.json" -s "$catalog_dir/catalog.key" -x "$catalog_dir/catalog.json.minisig"

@@ -228,6 +228,28 @@ test("CI bash never expands a possibly-empty array under set -u", () => {
 });
 
 
+test("desktop Windows release audits scripts before building", () => {
+  const script = read("scripts/ci/desktop-release.sh");
+  const windows = script.indexOf("aw)");
+  const audit = script.indexOf("audit-mac-release-scripts.sh", windows);
+  const build = script.indexOf("tauri:build:signed", windows);
+  assert.ok(windows >= 0 && audit > windows && audit < build);
+});
+
+test("darwin-arm64 publishes run component tests only after a version advances", () => {
+  for (const [file, command] of [
+    ["scripts/ci/native-release.sh", "test:component -- core"],
+    ["scripts/ci/plugin-release.sh", "\n    run_plugin_component_tests\n"],
+  ]) {
+    const script = read(file);
+    const unchanged = script.indexOf('= "unchanged"');
+    const tests = script.indexOf(command);
+    const sign = script.indexOf("minisign -Sm");
+    assert.ok(unchanged >= 0 && tests > unchanged && tests < sign, file);
+    assert.match(script, /PRODUCT_PLATFORM" = "darwin-arm64"/, file);
+  }
+});
+
 test("Plugin builds and publishes on the existing runner with local artifact verification", () => {
   const workflow = read(".github/workflows/run-tagged-plugin.yaml");
   const [build, publish] = workflow.split("      - name: Verify, sign and publish frozen artifacts");
