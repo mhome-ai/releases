@@ -123,10 +123,24 @@ test("linux native and install share one Docker host lock", () => {
     ".github/workflows/native-linux-arm64.yaml",
     ".github/workflows/native-linux-amd64.yaml",
     ".github/workflows/deploy-native-install-script.yaml",
+    ".github/workflows/deploy-meow-compose.yaml",
   ]) {
     const text = read(file);
     assert.match(text, /group: linux-docker-host/, file);
   }
+});
+
+test("compose project publishes onto the shared install bucket", () => {
+  const script = read("scripts/ci/deploy-compose.sh");
+  assert.match(script, /docker\/stable\/meow-compose\.yml/);
+  assert.match(script, /NATIVE_INSTALL_PUBLISH_ROLE_ARN/);
+  assert.match(read("scripts/ci/run.sh"), /compose\)/);
+  assert.doesNotMatch(read("scripts/ci/run.sh"), /\bdocker\b/);
+  assert.match(read(".github/workflows/deploy-meow-compose.yaml"), /channel: compose/);
+  assert.match(
+    read(".github/workflows/run-tagged.yaml"),
+    /inputs\.channel == 'install' \|\| inputs\.channel == 'compose'/
+  );
 });
 
 test("install workflow dispatches from current orchestrator SHA", () => {

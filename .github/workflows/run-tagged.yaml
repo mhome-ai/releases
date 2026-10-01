@@ -44,7 +44,7 @@ jobs:
           INITIALIZE_CATALOG: ${{ inputs.initialize_catalog }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUNTIME_PUBLISH_ROLE_ARN: ${{ (inputs.channel == 'native' || inputs.channel == 'install') && vars.RUNTIME_PUBLISH_ROLE_ARN || '' }}
-          NATIVE_INSTALL_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'install' && vars.NATIVE_INSTALL_PUBLISH_ROLE_ARN || '' }}
+          NATIVE_INSTALL_PUBLISH_ROLE_ARN: ${{ (inputs.channel == 'install' || inputs.channel == 'compose') && vars.NATIVE_INSTALL_PUBLISH_ROLE_ARN || '' }}
           APPLE_TEAM_ID: ${{ inputs.channel == 'desktop' && vars.APPLE_TEAM_ID || '' }}
           RUNTIME_CATALOG_PRIVATE_KEY_B64: ${{ inputs.channel == 'native' && secrets.RUNTIME_CATALOG_PRIVATE_KEY_B64 || '' }}
           APPLE_CSC_LINK: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.APPLE_CSC_LINK || '' }}

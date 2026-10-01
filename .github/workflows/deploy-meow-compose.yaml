@@ -1,0 +1,28 @@
+name: Deploy Meow Compose
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Attempt tag tYYYYMMDD-NN, or a platform tag such as nmr20261001-01"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  packages: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/run-tagged.yaml
+    concurrency:
+      group: linux-docker-host
+      cancel-in-progress: false
+    with:
+      runner_labels: '["self-hosted","Linux","ARM64","release-linux-arm64"]'
+      channel: compose
+      tag: ${{ inputs.version }}
+      orchestrator_ref: ${{ github.sha }}
+      work_suffix: compose
+    secrets: inherit

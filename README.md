@@ -24,7 +24,7 @@ repository. This git tree is the release orchestrator only.
 One workflow run is one machine. Native `nlr`/`nlx`/`nmr`/`nmx`/`nw`, Desktop
 `am`/`aw`. Mac native ARM (`nmr`) and Intel (`nmx`) share
 the Mac Mini and the `native-runtime-stable-macos` lock, so they queue. `am` and `aw` stay separate platform tags and share the
-`desktop-release` concurrency group. The single Host container image is built from a published Linux Native Host package in Baycat; this repo no longer publishes per-service Docker catalogs.
+`desktop-release` concurrency group. The single Host container image is built from a published Linux Native Host package in Baycat; this repo no longer publishes per-service Docker catalogs. `deploy-meow-compose.yaml` publishes Baycat `docker/meow-compose.yml` to `https://install.mhome.ai/docker/stable/meow-compose.yml` on the same bucket.
 
 Signing keys are repository or org Secrets. `APPLE_TEAM_ID` and the three
 publisher role ARNs are org Variables, visible to this public repo. Bucket

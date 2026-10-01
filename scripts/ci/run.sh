@@ -17,5 +17,8 @@ case "$CHANNEL" in
   install)
     bash "$HERE/deploy-native-install.sh"
     ;;
+  compose)
+    bash "$HERE/deploy-compose.sh"
+    ;;
   *) fail "unknown release channel: $CHANNEL" ;;
 esac
