@@ -9,18 +9,18 @@ const {
   releaseWorkRoot,
 } = require("./mhome-root");
 const {
-  fetchCommit,
+  fetchTag,
   requireExistingClone,
   printOutputs,
 } = require("./prepare-release-sources");
 
-function preparePluginSources({ version, commit, workId, home = os.homedir() }) {
-  if (!/^[0-9a-f]{40}$/.test(commit || "")) {
-    throw new Error("Plugin source commit is required");
+function preparePluginSources({ version, tag, workId, home = os.homedir() }) {
+  if (!/^t\d{8}-\d{2}$/.test(tag || "")) {
+    throw new Error("Plugin source tag must be tYYYYMMDD-NN");
   }
   const clone = canonicalClonePath("plugin", home);
   requireExistingClone(PRODUCT_REPOS.plugin, clone);
-  const revision = fetchCommit(clone, commit);
+  const revision = fetchTag(clone, tag);
   require("./verify-plugin-source").verifyPluginSource(clone, revision);
   const directory = path.join(releaseWorkRoot(workId, home), "plugin");
   if (fs.existsSync(directory))
@@ -36,21 +36,21 @@ function preparePluginSources({ version, commit, workId, home = os.homedir() }) 
     revision,
   ]);
   void version;
-  return { plugin_dir: directory, plugin_revision: revision, source_tag: "" };
+  return { plugin_dir: directory, plugin_revision: revision, source_tag: tag };
 }
 if (require.main === module) {
   try {
     const { values } = parseArgs({
       options: {
         version: { type: "string" },
-        commit: { type: "string" },
+        tag: { type: "string" },
         "work-id": { type: "string" },
       },
     });
     printOutputs(
       preparePluginSources({
         version: values.version,
-        commit: values.commit,
+        tag: values.tag,
         workId: values["work-id"],
       })
     );

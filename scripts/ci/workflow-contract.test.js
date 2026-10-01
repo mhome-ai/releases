@@ -236,18 +236,11 @@ test("desktop Windows release audits scripts before building", () => {
   assert.ok(windows >= 0 && audit > windows && audit < build);
 });
 
-test("darwin-arm64 publishes run component tests only after a version advances", () => {
-  for (const [file, command] of [
-    ["scripts/ci/native-release.sh", "test:component -- core"],
-    ["scripts/ci/plugin-release.sh", "\n    run_plugin_component_tests\n"],
-  ]) {
-    const script = read(file);
-    const unchanged = script.indexOf('= "unchanged"');
-    const tests = script.indexOf(command);
-    const sign = script.indexOf("minisign -Sm");
-    assert.ok(unchanged >= 0 && tests > unchanged && tests < sign, file);
-    assert.match(script, /PRODUCT_PLATFORM" = "darwin-arm64"/, file);
-  }
+test("platform tags resolve a t snapshot and do not run component tests while publishing", () => {
+  assert.equal(require("./resolve-product-tag").resolveProductTag("nmr20261001-01").sourceTag, "t20261001-01");
+  assert.doesNotMatch(read("scripts/ci/native-release.sh"), /test:component/);
+  assert.doesNotMatch(read("scripts/ci/plugin-release.sh"), /test:component/);
+  assert.match(read("scripts/ci/plugin-build.sh"), /--tag "\$PRODUCT_SOURCE_TAG"/);
 });
 
 test("Plugin builds and publishes on the existing runner with local artifact verification", () => {

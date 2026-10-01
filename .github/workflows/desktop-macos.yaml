@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Product tag, for example am1.2.3"
+        description: "Product tag, for example am20261001-01"
         required: true
         type: string
 

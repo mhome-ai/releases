@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Product version whose baycat vX.Y.Z supplies the installer"
+        description: "Attempt tag tYYYYMMDD-NN, or a platform tag such as nmr20261001-01"
         required: true
         type: string
 

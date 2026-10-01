@@ -27,18 +27,18 @@ case "$platform" in
   *) fail "unsupported docker platform $platform" ;;
 esac
 arch="${platform#linux-}"
-version="$PRODUCT_VERSION"
 base_url="${DOCKER_DISTRIBUTION_BASE_URL%/}"
 stable_prefix="docker/stable/${platform}"
-catalogs_prefix="docker/catalogs/${version}/${platform}"
 
 cleanup() {
   cleanup_worktree || echo "::warning::release worktree cleanup failed for $WORK_ROOT"
 }
 trap cleanup EXIT
 
-prepare_product_sources --with-meowcore --baycat-version-mode independent
+prepare_product_sources --with-meowcore
 cd "$BAYCAT_DIR"
+version="$(node -p "require('./package.json').version")"
+catalogs_prefix="docker/catalogs/${version}/${platform}"
 
 ghcr_login() {
   [ -n "${GH_TOKEN:-}" ] || fail "GH_TOKEN is required for GHCR"

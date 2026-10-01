@@ -78,6 +78,9 @@ read_product_source_commit() {
 
 prepare_product_sources() {
   local extra=() mode="match" baycat_commit="" out
+  if [ "${PRODUCT_SOURCE_MODE:-}" = "attempt" ]; then
+    mode="attempt"
+  fi
   while [ $# -gt 0 ]; do
     case "$1" in
       --with-meowcore|--with-pallas) extra+=("$1") ;;

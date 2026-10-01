@@ -5,11 +5,12 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib.sh"
 
 version="${RELEASE_TAG:?}"
-if [[ "$version" == v* ]]; then
-  version="${version#v}"
-fi
-if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  PRODUCT_VERSION="$version"
+if [[ "$version" == t[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9] ]]; then
+  PRODUCT_SOURCE_MODE=attempt
+  PRODUCT_SOURCE_TAG="$version"
+  PRODUCT_VERSION="${version#t}"
+elif [[ "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  fail "install source is a tYYYYMMDD-NN snapshot, not a version tag"
 else
   read_product_tag "$RELEASE_TAG"
   PRODUCT_VERSION="${PRODUCT_VERSION:?}"
@@ -23,7 +24,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-prepare_product_sources --baycat-version-mode match
+prepare_product_sources
 cd "$BAYCAT_DIR"
 out="${WORK_ROOT}/install-scripts"
 mkdir -p "$out"

@@ -1,7 +1,6 @@
 "use strict";
 
 const { parseArgs } = require("node:util");
-const { productSourceTag } = require("./mhome-root");
 
 const NATIVE_PREFIXES = {
   nlr: "linux-arm64",
@@ -26,28 +25,23 @@ function stripRef(ref) {
   return String(ref || "").replace(/^refs\/tags\//, "");
 }
 
-function isCatalogStamp(value) {
-  if (!/^\d{14}$/.test(String(value || ""))) return false;
-  const month = Number(value.slice(4, 6));
-  const day = Number(value.slice(6, 8));
-  const hour = Number(value.slice(8, 10));
-  const minute = Number(value.slice(10, 12));
-  const second = Number(value.slice(12, 14));
-  return (
-    month >= 1 &&
-    month <= 12 &&
-    day >= 1 &&
-    day <= 31 &&
-    hour <= 23 &&
-    minute <= 59 &&
-    second <= 59
-  );
+function isAttemptId(value) {
+  const match = /^(\d{4})(\d{2})(\d{2})-(\d{2})$/.exec(String(value || ""));
+  if (!match) return false;
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const index = Number(match[4]);
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31 && index >= 1 && index <= 99;
 }
 
-function timestampRelease(tag, prefix, body, channel, platform, extras) {
-  if (!isCatalogStamp(body)) {
+function attemptSourceTag(attempt) {
+  return `t${attempt}`;
+}
+
+function attemptRelease(tag, prefix, body, channel, platform, extras) {
+  if (!isAttemptId(body)) {
     throw new Error(
-      `${tag} must use ${prefix}YYYYMMDDHHMMSS; component versions come from source`
+      `${tag} must use ${prefix}YYYYMMDD-NN; component versions come from source`
     );
   }
   return {
@@ -55,8 +49,8 @@ function timestampRelease(tag, prefix, body, channel, platform, extras) {
     prefix,
     platform,
     version: body,
-    sourceTag: "",
-    sourceMode: "pin",
+    sourceTag: attemptSourceTag(body),
+    sourceMode: "attempt",
     releaseTag: tag,
     ...extras,
   };
@@ -64,9 +58,9 @@ function timestampRelease(tag, prefix, body, channel, platform, extras) {
 
 function resolveProductTag(ref) {
   const tag = stripRef(ref);
-  const pluginDocker = /^(pdlr|pdlx)(\d{14}|\d+\.\d+\.\d+)$/.exec(tag);
+  const pluginDocker = /^(pdlr|pdlx)(\d{8}-\d{2}|\d{14}|\d+\.\d+\.\d+)$/.exec(tag);
   if (pluginDocker) {
-    return timestampRelease(
+    return attemptRelease(
       tag,
       pluginDocker[1],
       pluginDocker[2],
@@ -75,9 +69,9 @@ function resolveProductTag(ref) {
       { withPallas: false, withMeowcore: false }
     );
   }
-  const plugin = /^(pnmr|pnmx|pnlr|pnlx)(\d{14}|\d+\.\d+\.\d+)$/.exec(tag);
+  const plugin = /^(pnmr|pnmx|pnlr|pnlx)(\d{8}-\d{2}|\d{14}|\d+\.\d+\.\d+)$/.exec(tag);
   if (plugin) {
-    return timestampRelease(
+    return attemptRelease(
       tag,
       plugin[1],
       plugin[2],
@@ -86,9 +80,9 @@ function resolveProductTag(ref) {
       { withPallas: false, withMeowcore: false }
     );
   }
-  const native = /^(nlr|nlx|nmr|nmx|nw)(\d{14}|\d+\.\d+\.\d+)$/.exec(tag);
+  const native = /^(nlr|nlx|nmr|nmx|nw)(\d{8}-\d{2}|\d{14}|\d+\.\d+\.\d+)$/.exec(tag);
   if (native) {
-    return timestampRelease(
+    return attemptRelease(
       tag,
       native[1],
       native[2],
@@ -97,35 +91,27 @@ function resolveProductTag(ref) {
       { withPallas: false, withMeowcore: true }
     );
   }
-  const desktop = /^(am|al|aw)(\d+\.\d+\.\d+)$/.exec(tag);
+  const desktop = /^(am|al|aw)(\d{8}-\d{2}|\d+\.\d+\.\d+)$/.exec(tag);
   if (desktop) {
-    const version = desktop[2];
-    return {
-      channel: "desktop",
-      prefix: desktop[1],
-      platform: DESKTOP_PREFIXES[desktop[1]],
-      version,
-      sourceTag: productSourceTag(version),
-      sourceMode: "tag",
-      releaseTag: `a${version}`,
-      withPallas: true,
-      withMeowcore: true,
-    };
+    return attemptRelease(
+      tag,
+      desktop[1],
+      desktop[2],
+      "desktop",
+      DESKTOP_PREFIXES[desktop[1]],
+      { withPallas: true, withMeowcore: true }
+    );
   }
-  const docker = /^(dlr|dlx)(\d+\.\d+\.\d+)$/.exec(tag);
+  const docker = /^(dlr|dlx)(\d{8}-\d{2}|\d+\.\d+\.\d+)$/.exec(tag);
   if (docker) {
-    const version = docker[2];
-    return {
-      channel: "docker",
-      prefix: docker[1],
-      platform: DOCKER_PREFIXES[docker[1]],
-      version,
-      sourceTag: productSourceTag(version),
-      sourceMode: "tag",
-      releaseTag: tag,
-      withPallas: false,
-      withMeowcore: true,
-    };
+    return attemptRelease(
+      tag,
+      docker[1],
+      docker[2],
+      "docker",
+      DOCKER_PREFIXES[docker[1]],
+      { withPallas: false, withMeowcore: true }
+    );
   }
   throw new Error(`Invalid product release tag: ${tag}`);
 }
@@ -157,5 +143,7 @@ module.exports = {
   DESKTOP_PREFIXES,
   DOCKER_PREFIXES,
   NATIVE_PREFIXES,
+  attemptSourceTag,
+  isAttemptId,
   resolveProductTag,
 };

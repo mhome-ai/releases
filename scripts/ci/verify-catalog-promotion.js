@@ -3,19 +3,20 @@ function verifyPromotion(currentBytes, nextBytes) {
   const current = JSON.parse(currentBytes);
   const next = JSON.parse(nextBytes);
   const generation = (value) => {
+    if (/^\d{8}-(?:0[1-9]|[1-9][0-9])$/.test(value || "")) return { kind: "attempt", value };
     if (/^\d{14}$/.test(value || "")) return { kind: "stamp", value };
     if (/^\d+\.\d+\.\d+$/.test(value || "")) {
       return { kind: "semver", parts: value.split(".").map(Number) };
     }
     throw new Error("Invalid stable release version");
   };
+  const rank = { semver: 0, stamp: 1, attempt: 2 };
   const compare = (older, newer) => {
-    if (older.kind === "stamp" && newer.kind === "stamp") {
+    if (older.kind !== newer.kind) return rank[newer.kind] - rank[older.kind];
+    if (older.kind === "stamp" || older.kind === "attempt") {
       if (older.value === newer.value) return 0;
       return older.value < newer.value ? 1 : -1;
     }
-    if (older.kind === "semver" && newer.kind === "stamp") return 1;
-    if (older.kind === "stamp" && newer.kind === "semver") return -1;
     return (
       newer.parts.map((part, index) => part - older.parts[index]).find((part) => part !== 0) ||
       0

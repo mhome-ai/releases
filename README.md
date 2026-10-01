@@ -5,18 +5,16 @@ repository. This git tree is the release orchestrator only.
 
 ## How a release is cut
 
-1. Desktop and Baycat Docker still use annotated source tags `vX.Y.Z`. Native
-   Client/Host/Core and Plugin versions stay in their own manifests.
-   `npm run freeze-source` only reports which of those versions need a bump.
-   MeowCore stays on its own `v*` tag, recorded in baycat
-   `release/sources/dependencies.json`.
-2. Push a product tag on **this** repo. Desktop stays `am1.2.3` / `aw1.2.3`.
-   Baycat Docker stays `dlr1.2.3` / `dlx1.2.3`. Native and Plugin tags are UTC
-   timestamps, for example `nmr20261001121600` or `pnmr20261001121600`. The
-   tagged commit's `sources/product-sources.json` pins the Baycat and Plugin
-   SHAs to compile. A component whose version and fingerprint are unchanged
-   is left as-is. A new catalog is published only when at least one component
-   version advanced.
+1. Snapshot tags are `tYYYYMMDD-NN` in UTC, for example `t20261001-01`.
+   Tag Baycat when this attempt publishes native, desktop, or Docker. Tag
+   Pallas as well for desktop. Tag Plugin when this attempt publishes plugins.
+   `node scripts/ci/next-attempt-tag.js --repo mhome-ai/baycat` prints the next
+   tag. Real versions stay in source. MeowCore and Agent keep `vX.Y.Z`.
+2. Push one platform tag on **this** repo, using that same attempt as the
+   suffix: `nmr20261001-01`, `am20261001-01`, `dlr20261001-01`,
+   `pnmr20261001-01`. The workflow checks out `t20261001-01` from the source
+   repo that owns the channel. A component or app whose version did not
+   advance is left as-is.
 3. The matching workflow file (one tag prefix, one job, one runner) runs
    `scripts/ci/run.sh` from a worktree of this repo. That script fetches the
    product source tags into sibling worktrees under `~/.mhome/work/<id>/` and
@@ -25,8 +23,7 @@ repository. This git tree is the release orchestrator only.
 
 One workflow run is one machine. Native `nlr`/`nlx`/`nmr`/`nmx`/`nw`, Desktop
 `am`/`aw`, Docker `dlr`/`dlx`. Mac native ARM (`nmr`) and Intel (`nmx`) share
-the Mac Mini and the `native-runtime-stable-macos` lock, so they queue. GitHub Latest for Desktop still lives on the
-asset tag `aX.Y.Z`; `am` and `aw` both publish onto that tag and share the
+the Mac Mini and the `native-runtime-stable-macos` lock, so they queue. `am` and `aw` stay separate platform tags and share the
 `desktop-release` concurrency group. Docker Catalog is per platform:
 `docker/stable/linux-arm64/` and `docker/stable/linux-x64/`. `dlr` and `dlx`
 do not wait for each other.

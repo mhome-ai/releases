@@ -167,6 +167,13 @@ function verifyProductPins({
     if (baycatHead !== baycatCommit) {
       fail(`baycat HEAD ${baycatHead} is not pinned commit ${baycatCommit}`);
     }
+  } else if (baycatVersionMode === "attempt") {
+    sourceTag = `t${version}`;
+    const baycatHead = git(baycatDir, ["rev-parse", "HEAD"]);
+    const baycatTag = git(baycatDir, ["rev-parse", `${sourceTag}^{commit}`]);
+    if (baycatHead !== baycatTag) {
+      fail(`baycat HEAD ${baycatHead} is not tag ${sourceTag}`);
+    }
   } else {
     if (baycatVersionMode === "match") {
       const pkg = JSON.parse(
@@ -279,7 +286,11 @@ function prepareReleaseSources({
     : "",
   runAttempt = process.env.GITHUB_RUN_ATTEMPT || "",
 } = {}) {
-  const sourceTag = baycatCommit ? "" : productSourceTag(version);
+  const sourceTag = baycatCommit
+    ? ""
+    : baycatVersionMode === "attempt"
+      ? `t${version}`
+      : productSourceTag(version);
   const workRoot = releaseWorkRoot(workId, home);
   const baycatClone = canonicalClonePath("baycat", home);
   const meowcoreClone = canonicalClonePath("meowcore-rust", home);

@@ -23,12 +23,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-prepare_product_sources --with-meowcore --with-pallas --baycat-version-mode match
+prepare_product_sources --with-meowcore --with-pallas
 cd "$BAYCAT_DIR"
+APP_VERSION="$(node -p "require('./package.json').version")"
 node scripts/release/resolve-release-platforms.js --event push --ref "$tag" >/dev/null
 notes_file="$BAYCAT_DIR/build/release-notes.md"
 mkdir -p "$BAYCAT_DIR/build"
-node scripts/release/format-release-notes.js --version "$PRODUCT_VERSION" > "$notes_file"
+node scripts/release/format-release-notes.js --version "$APP_VERSION" > "$notes_file"
 
 verify_macos_runtime_catalog() {
   local directory
@@ -45,7 +46,7 @@ verify_macos_runtime_catalog() {
     --catalog "$directory/catalog.json" \
     --signature "$directory/catalog.json.minisig" \
     --public-key "$directory/catalog.pub" \
-    --desktop-version "$PRODUCT_VERSION"
+    --desktop-version "$APP_VERSION"
   rm -rf "$directory"
 }
 
@@ -84,11 +85,11 @@ case "$PRODUCT_PREFIX" in
     SIGNING_KEYCHAIN=1
     bash "$CI_ROOT/macos-signing-keychain.sh" acquire desktop
     bash scripts/release/mac/check-mac-runner.sh
-    bash scripts/ci/ci-install-release-deps.sh "$PRODUCT_VERSION"
+    bash scripts/ci/ci-install-release-deps.sh "$APP_VERSION" "$PRODUCT_SOURCE_TAG"
     verify_macos_runtime_catalog
-    bash scripts/release/mac/preflight-mac-release.sh --tag "$PRODUCT_RELEASE_TAG" --sign-smoke
+    bash scripts/release/mac/preflight-mac-release.sh --tag "$PRODUCT_SOURCE_TAG" --sign-smoke
     bash scripts/release/mac/mac-release-persist.sh prepare-run \
-      "$PRODUCT_VERSION" "${GITHUB_RUN_ATTEMPT:-1}"
+      "$APP_VERSION" "${GITHUB_RUN_ATTEMPT:-1}"
     bash scripts/release/mac/build-mac-release-bundles.sh --resume --allow-unstapled
     bash scripts/ci/ci-notarize-staged-dmgs.sh --allow-unstapled
     bash scripts/release/mac/verify-mac-dmg-notarization.sh --allow-unstapled
@@ -102,7 +103,7 @@ case "$PRODUCT_PREFIX" in
   aw)
     require_cmd java curl powershell.exe
     sh scripts/release/mac/audit-mac-release-scripts.sh
-    bash scripts/ci/ci-install-release-deps.sh "$PRODUCT_VERSION"
+    bash scripts/ci/ci-install-release-deps.sh "$APP_VERSION" "$PRODUCT_SOURCE_TAG"
     install_windows_codesign
     npm run tauri:build:signed
     verify_windows_installer

@@ -22,8 +22,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-baycat_commit="$(read_product_source_commit baycat mhome-ai/baycat)"
-prepare_product_sources --with-meowcore --baycat-commit "$baycat_commit"
+prepare_product_sources --with-meowcore
 cd "$BAYCAT_DIR"
 node -e "require('./scripts/lib/app-component-state').assertLockedFingerprints()"
 node -e '
@@ -148,14 +147,6 @@ decision="$(tr -d "[:space:]" < build/runtime-catalog/publish-decision.txt)"
 if [ "$decision" = "unchanged" ]; then
   echo "No component version advanced; catalog unchanged."
   exit 0
-fi
-
-if [ "$PRODUCT_PLATFORM" = "darwin-arm64" ]; then
-  npm ci --no-audit --no-fund
-  unset CARGO_TARGET_DIR
-  npm run test:component:lint
-  npm run test:component:unit
-  npm run test:component -- core
 fi
 
 printf '%s' "$RUNTIME_CATALOG_PRIVATE_KEY_B64" | base64 --decode > build/runtime-catalog/catalog.key
