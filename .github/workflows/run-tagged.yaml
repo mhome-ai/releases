@@ -24,6 +24,10 @@ on:
         required: false
         type: string
         default: ""
+      image_version:
+        required: false
+        type: string
+        default: ""
 
 jobs:
   run:
@@ -59,6 +63,7 @@ jobs:
           SSL_COM_TOTP_SECRET: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_TOTP_SECRET || '' }}
           DOCKERHUB_USERNAME: ${{ inputs.channel == 'image' && secrets.DOCKERHUB_USERNAME || '' }}
           DOCKERHUB_TOKEN: ${{ inputs.channel == 'image' && secrets.DOCKERHUB_TOKEN || '' }}
+          IMAGE_VERSION: ${{ inputs.image_version }}
         run: |
           set -euo pipefail
           case "$RELEASE_CHANNEL" in plugin) echo "Plugin releases require run-tagged-plugin.yaml" >&2; exit 1 ;; esac

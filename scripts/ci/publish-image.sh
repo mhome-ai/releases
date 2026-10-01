@@ -1,24 +1,29 @@
 #!/usr/bin/env bash
 # Push one architecture of the Host image to Docker Hub.
-# Dispatch once with an nlr tag and once with the matching nlx tag.
-# latest is published only after both architectures exist.
+# The tag is a published Native Linux release, for example nlr1.0.2 or nlx1.0.3.
+# IMAGE_VERSION is the Docker tag, for example 0.1.0.
+# latest is published only after both architectures of that version exist.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib.sh
 source "$HERE/lib.sh"
 
-read_product_tag "${RELEASE_TAG:?}"
-[ "$PRODUCT_CHANNEL" = native ] || fail "image publish takes a Native Linux tag such as nlr20261001-01"
-case "$PRODUCT_PLATFORM" in
-  linux-arm64) arch=arm64 ;;
-  linux-x64) arch=amd64 ;;
-  *) fail "image publish only accepts linux-arm64 or linux-x64 tags" ;;
+tag="${RELEASE_TAG:?}"
+case "$tag" in
+  nlr*) platform=linux-arm64; arch=arm64; asset=host-linux-arm64.tar.gz ;;
+  nlx*) platform=linux-x64; arch=amd64; asset=host-linux-amd64.tar.gz ;;
+  *) fail "image publish takes an nlr or nlx release tag, got $tag" ;;
 esac
-[ "$PRODUCT_PLATFORM" = "${WORK_SUFFIX:?}" ] || fail "tag platform $PRODUCT_PLATFORM does not match runner $WORK_SUFFIX"
+[ "$platform" = "${WORK_SUFFIX:?}" ] || fail "tag platform $platform does not match runner $WORK_SUFFIX"
+version="${IMAGE_VERSION:?IMAGE_VERSION is required}"
+printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
+  || fail "IMAGE_VERSION must be x.y.z, got $version"
 [ -n "${DOCKERHUB_USERNAME:-}" ] || fail "Missing secret DOCKERHUB_USERNAME"
 [ -n "${DOCKERHUB_TOKEN:-}" ] || fail "Missing secret DOCKERHUB_TOKEN"
 
-require_cmd docker gh node
+require_cmd docker gh node git
+require_mhome_clone baycat
+require_mhome_clone meowcore-rust
 
 cleanup() {
   docker logout >/dev/null 2>&1 || true
@@ -26,25 +31,36 @@ cleanup() {
 }
 trap cleanup EXIT
 
-prepare_product_sources --with-meowcore
-compose="${BAYCAT_DIR}/docker/meow-compose.yml"
-repo=meowlink/meow
-grep -Eq '^[[:space:]]*image:[[:space:]]*meowlink/meow:latest[[:space:]]*$' "$compose" \
-  || fail "compose image must be meowlink/meow:latest"
+mkdir -p "$WORK_ROOT"
+git -C "$MHOME/baycat" fetch --prune origin master
+git -C "$MHOME/baycat" worktree add --detach "$WORK_ROOT/baycat" origin/master
+pin="$(node -e '
+  const fs = require("fs");
+  const pin = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).sources.meowcoreRust;
+  if (!pin || !/^\d+\.\d+\.\d+$/.test(pin.version || "") || !/^[0-9a-f]{40}$/.test(pin.commit || "")) {
+    process.exit(1);
+  }
+  process.stdout.write(pin.version + " " + pin.commit);
+' "$WORK_ROOT/baycat/release/sources/dependencies.json")" || fail "baycat is missing a meowcore pin"
+pin_version="${pin%% *}"
+pin_commit="${pin#* }"
+git -C "$MHOME/meowcore-rust" fetch origin "refs/tags/v${pin_version}:refs/tags/v${pin_version}"
+actual="$(git -C "$MHOME/meowcore-rust" rev-parse "v${pin_version}^{commit}")"
+[ "$actual" = "$pin_commit" ] || fail "meowcore v${pin_version} is $actual, baycat pins $pin_commit"
+git -C "$MHOME/meowcore-rust" worktree add --detach "$WORK_ROOT/meowcore-rust" "$pin_commit"
 
+repo=mhomeai/meow
 assets="${WORK_ROOT}/image-assets"
-rm -rf "$assets"
 mkdir -p "$assets"
-gh release download "$PRODUCT_RELEASE_TAG" \
+gh release download "$tag" \
   --repo "$GITHUB_RELEASE_REPO" \
-  --pattern "host-${PRODUCT_PLATFORM}.tar.gz" \
+  --pattern "$asset" \
   --dir "$assets" \
   --clobber
-archive="${assets}/host-${PRODUCT_PLATFORM}.tar.gz"
-[ -f "$archive" ] || fail "GitHub release $PRODUCT_RELEASE_TAG has no host-${PRODUCT_PLATFORM}.tar.gz"
+archive="${assets}/${asset}"
+[ -f "$archive" ] || fail "GitHub release $tag has no $asset"
 
 extract="${WORK_ROOT}/host-extract"
-rm -rf "$extract"
 mkdir -p "$extract"
 tar -xzf "$archive" -C "$extract"
 host_bin=
@@ -57,20 +73,11 @@ done < <(find "$extract" -type f -path '*/bin/meowhostd')
 chmod +x "$host_bin"
 host_dist="$(dirname "$(dirname "$host_bin")")"
 [ -f "$host_dist/component.json" ] || fail "Host package has no component.json"
-version="$(node -e '
-  const fs = require("fs");
-  const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).version;
-  if (typeof value !== "string" || !value) process.exit(1);
-  process.stdout.write(value);
-' "$host_dist/component.json")" || fail "Host component.json has no version"
-printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
-  || fail "Host version must be x.y.z, got $version"
 
 printf '%s\n' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
 image="${repo}:${version}-${arch}"
-bash "$BAYCAT_DIR/scripts/release/docker/build-image.sh" \
+bash "$WORK_ROOT/baycat/scripts/release/docker/build-image.sh" \
   --host-dist "$host_dist" \
-  --meowcore-dir "$MEOWCORE_DIR" \
   --tag "$image"
 docker push "$image"
 

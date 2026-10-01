@@ -151,7 +151,9 @@ test("host image publishes to Docker Hub and not GHCR", () => {
   assert.match(read("scripts/ci/run.sh"), /image\)/);
   assert.doesNotMatch(read("scripts/ci/run.sh"), /\bdocker\b/);
   assert.match(script, /docker login/);
-  assert.match(script, /meowlink\/meow:latest/);
+  assert.match(script, /mhomeai\/meow/);
+  assert.match(script, /IMAGE_VERSION/);
+  assert.match(script, /host-linux-amd64\.tar\.gz/);
   assert.match(script, /docker push/);
   assert.match(script, /docker manifest push/);
   assert.doesNotMatch(script, /ghcr\.io/);
@@ -161,7 +163,8 @@ test("host image publishes to Docker Hub and not GHCR", () => {
   assert.doesNotMatch(yaml, /ghcr\.io/);
   assert.match(read(".github/workflows/publish-meow-image-arm64.yaml"), /channel: image/);
   assert.match(read(".github/workflows/publish-meow-image-amd64.yaml"), /channel: image/);
-  assert.match(read("scripts/ci/deploy-compose.sh"), /meowlink\/meow:latest/);
+  assert.match(read("scripts/ci/deploy-compose.sh"), /mhomeai\/meow:latest/);
+  assert.match(read(".github/workflows/publish-meow-image-arm64.yaml"), /image_version/);
 });
 
 test("install workflow dispatches from current orchestrator SHA", () => {

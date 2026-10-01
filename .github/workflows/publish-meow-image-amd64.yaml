@@ -4,7 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Native Linux x64 tag, for example nlx20261001-01"
+        description: "Native Linux x64 release, for example nlx1.0.3"
+        required: true
+        type: string
+      image_version:
+        description: "Image version, for example 0.1.0"
         required: true
         type: string
 
@@ -23,6 +27,7 @@ jobs:
       runner_labels: '["self-hosted","Linux","AMD64","release-linux-amd64"]'
       channel: image
       tag: ${{ inputs.tag }}
+      image_version: ${{ inputs.image_version }}
       orchestrator_ref: ${{ github.sha }}
       work_suffix: linux-x64
     secrets: inherit
