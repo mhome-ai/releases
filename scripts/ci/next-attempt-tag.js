@@ -12,7 +12,7 @@ function utcDay(date = new Date()) {
 
 function nextAttemptTag(existing, date = new Date()) {
   const day = utcDay(date);
-  const pattern = new RegExp(`^t${day}-(\\d{2})$`);
+  const pattern = new RegExp(`^[rt]${day}-(\\d{2})$`);
   let highest = 0;
   for (const tag of existing) {
     const match = pattern.exec(tag);
@@ -22,7 +22,7 @@ function nextAttemptTag(existing, date = new Date()) {
   if (highest >= 99) {
     throw new Error(`attempt index for ${day} is exhausted`);
   }
-  return `t${day}-${String(highest + 1).padStart(2, "0")}`;
+  return `r${day}-${String(highest + 1).padStart(2, "0")}`;
 }
 
 function remoteTags(repo) {
@@ -34,7 +34,7 @@ function remoteTags(repo) {
   const tags = new Set();
   for (const line of output.split("\n")) {
     const ref = line.split(/\s+/)[1] || "";
-    const match = /^refs\/tags\/(t\d{8}-\d{2})(?:\^\{\})?$/.exec(ref);
+    const match = /^refs\/tags\/([rt]\d{8}-\d{2})(?:\^\{\})?$/.exec(ref);
     if (match) tags.add(match[1]);
   }
   return [...tags];

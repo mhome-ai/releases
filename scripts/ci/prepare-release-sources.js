@@ -69,6 +69,11 @@ function parseLsRemote(output) {
 }
 
 function fetchTag(repoDir, tag) {
+  if (/^r\d{8}-\d{2}$/.test(tag)) {
+    fail(
+      `refusing attempt tag ${tag}; releases only accept verified snapshot t${tag.slice(1)}`
+    );
+  }
   const remoteLines = git(repoDir, [
     "ls-remote",
     "origin",

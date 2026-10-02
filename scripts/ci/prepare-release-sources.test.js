@@ -8,6 +8,7 @@ const path = require("node:path");
 const test = require("node:test");
 const { cleanupReleaseSources } = require("./cleanup-release-sources");
 const {
+  fetchTag,
   prepareReleaseSources,
   printOutputs,
 } = require("./prepare-release-sources");
@@ -212,6 +213,13 @@ test("fails when the runner was not provisioned with a clone", (t) => {
   );
 });
 
+test("refuses an attempt tag and does not fall back from a missing verified snapshot", () => {
+  assert.throws(
+    () => fetchTag("/tmp/not-a-repo", "r20261001-01"),
+    /refusing attempt tag r20261001-01/
+  );
+});
+
 test("fails when the product source tag is missing", (t) => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "mhome-home-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
@@ -226,6 +234,28 @@ test("fails when the product source tag is missing", (t) => {
       prepareReleaseSources({
         version: "20261001-01",
         workId: "missing-tag",
+        withMeowcore: false,
+        home,
+      }),
+    /remote tag t20261001-01 not found/
+  );
+});
+
+test("does not use an r tag when the verified snapshot is absent", (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "mhome-home-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const baycat = createOrigin(t, {
+    name: "baycat",
+    branch: "master",
+    tag: "r20261001-01",
+    files: { "package.json": '{"version":"1.2.3"}\n' },
+  });
+  provisionClone(home, "baycat", baycat, "master");
+  assert.throws(
+    () =>
+      prepareReleaseSources({
+        version: "20261001-01",
+        workId: "attempt-only",
         withMeowcore: false,
         home,
       }),

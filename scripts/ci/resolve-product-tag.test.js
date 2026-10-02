@@ -44,14 +44,16 @@ test("does not let n steal nlr or a steal am", () => {
 
 test("allocates the next UTC attempt tag", () => {
   const date = new Date("2026-10-01T16:00:00Z");
-  assert.equal(nextAttemptTag([], date), "t20261001-01");
-  assert.equal(nextAttemptTag(["t20261001-01", "t20261001-02"], date), "t20261001-03");
-  assert.equal(nextAttemptTag(["t20260930-09"], date), "t20261001-01");
+  assert.equal(nextAttemptTag([], date), "r20261001-01");
+  assert.equal(nextAttemptTag(["r20261001-01", "t20261001-01"], date), "r20261001-02");
+  assert.equal(nextAttemptTag(["t20261001-02"], date), "r20261001-03");
+  assert.equal(nextAttemptTag(["t20260930-09", "r20260930-03"], date), "r20261001-01");
 });
 
 test("rejects unknown tags", () => {
   assert.throws(() => resolveProductTag("v1.2.3"), /Invalid product release tag/);
   assert.throws(() => resolveProductTag("t20261001-01"), /Invalid product release tag/);
+  assert.throws(() => resolveProductTag("r20261001-01"), /Invalid product release tag/);
   assert.throws(() => resolveProductTag("nl1.2.3"), /Invalid product release tag/);
   assert.throws(() => resolveProductTag("nm1.2.3"), /Invalid product release tag/);
   assert.throws(() => resolveProductTag("nmd1.2.3"), /Invalid product release tag/);

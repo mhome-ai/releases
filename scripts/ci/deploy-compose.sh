@@ -5,7 +5,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib.sh"
 
 version="${RELEASE_TAG:?}"
-if [[ "$version" == t[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9] ]]; then
+if [[ "$version" == r[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9] ]]; then
+  fail "releases require verified snapshot t${version#r}; attempt tag ${version} cannot be used"
+elif [[ "$version" == t[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9] ]]; then
   PRODUCT_SOURCE_MODE=attempt
   PRODUCT_SOURCE_TAG="$version"
   PRODUCT_VERSION="${version#t}"

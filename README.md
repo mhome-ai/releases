@@ -5,15 +5,23 @@ repository. This git tree is the release orchestrator only.
 
 ## How a release is cut
 
-1. Snapshot tags are `tYYYYMMDD-NN` in UTC, for example `t20261001-01`.
-   Tag Baycat when this attempt publishes native or desktop. Desktop checks
-   out the Pallas `vX.Y.Z` named in Baycat `release/sources/dependencies.json`.
-   Tag Plugin when this attempt publishes plugins.
+1. Attempt tags are `rYYYYMMDD-NN` in UTC, for example `r20261001-01`.
+   Push that annotated tag on Baycat when this attempt publishes native or desktop,
+   or on Plugin when it publishes plugins. The tag points at one commit already
+   on the default branch. CI checks that commit. After the checks pass, CI creates
+   annotated `t20261001-01` at the same commit. A failed, cancelled, or unfinished
+   attempt keeps `r` and does not create `t`. Tags are not moved: rerun the same
+   `r` after an environment failure, and use a new number after a source change.
+   If `t` already points at the checked commit, creating it again is a no-op; a
+   different commit is an error. Desktop checks out the Pallas `vX.Y.Z` named in
+   Baycat `release/sources/dependencies.json`.
    `node scripts/ci/next-attempt-tag.js --repo mhome-ai/baycat` prints the next
-   tag. Real versions stay in source. MeowCore, Agent, and Pallas keep `vX.Y.Z`.
+   `r` tag, counting existing `r` and `t` numbers. Real versions stay in source.
+   MeowCore, Agent, and Pallas keep `vX.Y.Z`.
 2. Push one platform tag on **this** repo, using that same attempt as the
    suffix: `nmr20261001-01`, `am20261001-01`, `pnmr20261001-01`. The workflow checks out `t20261001-01` from the source
-   repo that owns the channel. A component or app whose version did not
+   repo that owns the channel. Without that `t` tag it stops. It does not fall
+   back to `r` or to the default branch. A component or app whose version did not
    advance is left as-is.
 3. The matching workflow file (one tag prefix, one job, one runner) runs
    `scripts/ci/run.sh` from a worktree of this repo. That script fetches the
@@ -55,7 +63,7 @@ Agent is also a source input. Provision `~/.mhome/agent` from the private `mhome
 
 ## Plugin 独立发布
 
-`plugin` 从 `~/.mhome/plugin` 的 annotated `vX.Y.Z` 取源码，使用 `pnmr/pnmx/pnlr/pnlx` 发布 Native 包。平台 Native 继续从 Baycat 构建。Plugin workflow 不编译 Baycat 或 MeowCore 源码。
+`plugin` 从 `~/.mhome/plugin` 的 annotated `tYYYYMMDD-NN` 取源码，使用 `pnmr/pnmx/pnlr/pnlx` 发布 Native 包。这个 `t` 由 Plugin 的 `r` 检查通过后创建。平台 Native 继续从 Baycat 构建。Plugin workflow 不编译 Baycat 或 MeowCore 源码。
 
 首次运行需要准备官方 plugin 仓库、runner 只读凭据、`PLUGIN_PUBLISH_ROLE_ARN` 和 `PLUGIN_CATALOG_PRIVATE_KEY_B64`；Plugin 使用独立签名密钥，公钥已同步安装器，secret 和 S3 写权限独立。Plugin role 只写 `plugins/*` 指定前缀。先发布平台 Native，再发布 Plugin Native。Linux Node 装进 Baycat 的统一 Host 容器，不再单独发布家电镜像。
 
@@ -63,4 +71,4 @@ Agent is also a source input. Provision `~/.mhome/agent` from the private `mhome
 
 Plugin 使用 `run-tagged-plugin.yaml` 的单个作业，复用平台已有的自托管 runner：macOS 在 alimao 的 `release-macos-primary`，Linux 在现有 `release-linux-arm64` / `release-linux-amd64`。同一 runner 先运行质量检查并构建，再核对本地产物的源码、编排 commit、tag 和摘要，最后签名上传。不经过 GitHub artifact 中转，也不要求额外机器。构建步骤不注入签名 secret；同机运行属于可信源码发布流程，不宣称凭据或物理隔离。
 
-Plugin 源码必须来自 `origin/main` 上的 annotated tag。审核规则由维护者在 GitHub 配置，发布脚本不读取分支保护或历史 CI 状态，不需要跨仓库 API Token；当前冻结源码仍须通过本次构建的 `quality-gate.sh`。源码读取沿用现有 Git SSH 权限。Plugin CI 也使用现有自托管 runner，从预置仓库创建独立 worktree，只自动运行 main 提交；不在发布机上自动运行未经审核的第三方 PR。
+Plugin 源码必须来自 `origin/main` 上的 annotated `t` tag。没有 `t` 时不回退到 `r`。审核规则由维护者在 GitHub 配置，发布脚本不读取分支保护或历史 CI 状态，不需要跨仓库 API Token；当前冻结源码仍须通过本次构建的 `quality-gate.sh`。源码读取沿用现有 Git SSH 权限。Plugin CI 也使用现有自托管 runner，从预置仓库创建独立 worktree，只自动运行 main 提交；不在发布机上自动运行未经审核的第三方 PR。

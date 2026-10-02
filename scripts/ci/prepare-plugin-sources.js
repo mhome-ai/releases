@@ -15,6 +15,11 @@ const {
 } = require("./prepare-release-sources");
 
 function preparePluginSources({ version, tag, workId, home = os.homedir() }) {
+  if (/^r\d{8}-\d{2}$/.test(tag || "")) {
+    throw new Error(
+      `refusing attempt tag ${tag}; plugin releases only accept verified snapshot t${tag.slice(1)}`
+    );
+  }
   if (!/^t\d{8}-\d{2}$/.test(tag || "")) {
     throw new Error("Plugin source tag must be tYYYYMMDD-NN");
   }
