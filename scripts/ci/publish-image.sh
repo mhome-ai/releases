@@ -23,7 +23,6 @@ printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
 
 require_cmd docker gh node git curl
 require_mhome_clone baycat
-require_mhome_clone meowcore-rust
 
 cleanup() {
   docker logout >/dev/null 2>&1 || true
@@ -34,20 +33,6 @@ trap cleanup EXIT
 mkdir -p "$WORK_ROOT"
 git -C "$MHOME/baycat" fetch --prune origin master
 git -C "$MHOME/baycat" worktree add --detach "$WORK_ROOT/baycat" origin/master
-pin="$(node -e '
-  const fs = require("fs");
-  const pin = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).sources.meowcoreRust;
-  if (!pin || !/^\d+\.\d+\.\d+$/.test(pin.version || "") || !/^[0-9a-f]{40}$/.test(pin.commit || "")) {
-    process.exit(1);
-  }
-  process.stdout.write(pin.version + " " + pin.commit);
-' "$WORK_ROOT/baycat/release/sources/dependencies.json")" || fail "baycat is missing a meowcore pin"
-pin_version="${pin%% *}"
-pin_commit="${pin#* }"
-git -C "$MHOME/meowcore-rust" fetch origin "refs/tags/v${pin_version}:refs/tags/v${pin_version}"
-actual="$(git -C "$MHOME/meowcore-rust" rev-parse "v${pin_version}^{commit}")"
-[ "$actual" = "$pin_commit" ] || fail "meowcore v${pin_version} is $actual, baycat pins $pin_commit"
-git -C "$MHOME/meowcore-rust" worktree add --detach "$WORK_ROOT/meowcore-rust" "$pin_commit"
 
 repo=mhomeai/meow
 assets="${WORK_ROOT}/image-assets"

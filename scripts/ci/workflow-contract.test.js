@@ -158,6 +158,7 @@ test("host image publishes to Docker Hub and not GHCR", () => {
   assert.match(script, /docker push/);
   assert.match(script, /docker manifest push/);
   assert.doesNotMatch(script, /ghcr\.io/);
+  assert.doesNotMatch(script, /meowcore-rust/);
   assert.match(yaml, /inputs\.channel == 'image'/);
   assert.match(yaml, /secrets\.DOCKERHUB_USERNAME/);
   assert.match(yaml, /secrets\.DOCKERHUB_TOKEN/);
