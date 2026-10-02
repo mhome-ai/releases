@@ -11,7 +11,7 @@ source "$HERE/lib.sh"
 tag="${RELEASE_TAG:?}"
 case "$tag" in
   nlr*) platform=linux-arm64; arch=arm64; asset=host-linux-arm64.tar.gz ;;
-  nlx*) platform=linux-x64; arch=amd64; asset=host-linux-amd64.tar.gz ;;
+  nlx*) platform=linux-x64; arch=amd64; asset=host-linux-x64.tar.gz ;;
   *) fail "image publish takes an nlr or nlx release tag, got $tag" ;;
 esac
 [ "$platform" = "${WORK_SUFFIX:?}" ] || fail "tag platform $platform does not match runner $WORK_SUFFIX"
@@ -34,7 +34,7 @@ mkdir -p "$WORK_ROOT"
 git -C "$MHOME/baycat" fetch --prune origin master
 git -C "$MHOME/baycat" worktree add --detach "$WORK_ROOT/baycat" origin/master
 
-repo=mhomeai/meow
+repo=mhomeai/meow-host
 assets="${WORK_ROOT}/image-assets"
 mkdir -p "$assets"
 archive="${assets}/${asset}"

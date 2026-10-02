@@ -151,9 +151,11 @@ test("host image publishes to Docker Hub and not GHCR", () => {
   assert.match(read("scripts/ci/run.sh"), /image\)/);
   assert.doesNotMatch(read("scripts/ci/run.sh"), /\bdocker\b/);
   assert.match(script, /docker login/);
-  assert.match(script, /mhomeai\/meow/);
+  assert.match(script, /mhomeai\/meow-host/);
+  assert.doesNotMatch(script, /mhomeai\/meow:/);
   assert.match(script, /IMAGE_VERSION/);
-  assert.match(script, /host-linux-amd64\.tar\.gz/);
+  assert.match(script, /host-linux-x64\.tar\.gz/);
+  assert.doesNotMatch(script, /host-linux-amd64/);
   assert.match(script, /curl --fail --location --retry 8/);
   assert.match(script, /docker push/);
   assert.match(script, /docker manifest push/);
@@ -165,7 +167,7 @@ test("host image publishes to Docker Hub and not GHCR", () => {
   assert.doesNotMatch(yaml, /ghcr\.io/);
   assert.match(read(".github/workflows/publish-meow-image-arm64.yaml"), /channel: image/);
   assert.match(read(".github/workflows/publish-meow-image-amd64.yaml"), /channel: image/);
-  assert.match(read("scripts/ci/deploy-compose.sh"), /mhomeai\/meow:latest/);
+  assert.match(read("scripts/ci/deploy-compose.sh"), /mhomeai\/meow-host:latest/);
   assert.match(read(".github/workflows/publish-meow-image-arm64.yaml"), /image_version/);
 });
 

@@ -30,8 +30,8 @@ prepare_product_sources
 compose="${BAYCAT_DIR}/docker/meow-compose.yml"
 [ -f "$compose" ] || fail "missing $compose"
 grep -q '/root/.meow' "$compose" || fail "compose file does not mount /root/.meow"
-grep -Eq '^[[:space:]]*image:[[:space:]]*mhomeai/meow:latest[[:space:]]*$' "$compose" \
-  || fail "compose image must be mhomeai/meow:latest"
+grep -Eq '^[[:space:]]*image:[[:space:]]*mhomeai/meow-host:latest[[:space:]]*$' "$compose" \
+  || fail "compose image must be mhomeai/meow-host:latest"
 
 assume_aws_role "$NATIVE_INSTALL_PUBLISH_ROLE_ARN"
 SOURCE_SHA="$BAYCAT_REVISION"
