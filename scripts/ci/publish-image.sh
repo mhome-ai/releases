@@ -21,7 +21,7 @@ printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
 [ -n "${DOCKERHUB_USERNAME:-}" ] || fail "Missing secret DOCKERHUB_USERNAME"
 [ -n "${DOCKERHUB_TOKEN:-}" ] || fail "Missing secret DOCKERHUB_TOKEN"
 
-require_cmd docker gh node git
+require_cmd docker gh node git curl
 require_mhome_clone baycat
 require_mhome_clone meowcore-rust
 
@@ -52,13 +52,15 @@ git -C "$MHOME/meowcore-rust" worktree add --detach "$WORK_ROOT/meowcore-rust" "
 repo=mhomeai/meow
 assets="${WORK_ROOT}/image-assets"
 mkdir -p "$assets"
-gh release download "$tag" \
-  --repo "$GITHUB_RELEASE_REPO" \
-  --pattern "$asset" \
-  --dir "$assets" \
-  --clobber
 archive="${assets}/${asset}"
-[ -f "$archive" ] || fail "GitHub release $tag has no $asset"
+asset_url="$(gh api "repos/${GITHUB_RELEASE_REPO}/releases/tags/${tag}" \
+  --jq ".assets[] | select(.name==\"${asset}\") | .url")"
+[ -n "$asset_url" ] || fail "GitHub release $tag has no $asset"
+curl --fail --location --retry 8 --retry-all-errors --retry-delay 2 \
+  --header "Accept: application/octet-stream" \
+  --header "Authorization: Bearer ${GH_TOKEN}" \
+  --output "$archive" \
+  "$asset_url"
 
 extract="${WORK_ROOT}/host-extract"
 mkdir -p "$extract"

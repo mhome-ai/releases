@@ -154,6 +154,7 @@ test("host image publishes to Docker Hub and not GHCR", () => {
   assert.match(script, /mhomeai\/meow/);
   assert.match(script, /IMAGE_VERSION/);
   assert.match(script, /host-linux-amd64\.tar\.gz/);
+  assert.match(script, /curl --fail --location --retry 8/);
   assert.match(script, /docker push/);
   assert.match(script, /docker manifest push/);
   assert.doesNotMatch(script, /ghcr\.io/);
