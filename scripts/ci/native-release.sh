@@ -13,6 +13,13 @@ require_mhome_clone meowcore-rust
 require_mhome_clone agent
 require_mhome_clone releases
 require_cmd git node cargo gh curl minisign
+case "$PRODUCT_PLATFORM" in
+  linux-arm64|linux-x64)
+    [ -n "${DOCKERHUB_USERNAME:-}" ] || fail "Missing secret DOCKERHUB_USERNAME"
+    [ -n "${DOCKERHUB_TOKEN:-}" ] || fail "Missing secret DOCKERHUB_TOKEN"
+    require_cmd docker
+    ;;
+esac
 
 cleanup() {
   if [ "${SIGNING_KEYCHAIN:-}" = "1" ]; then
@@ -270,3 +277,8 @@ cmp -s build/runtime-catalog/catalog.json.minisig "$verification_dir/stable-cata
 rm -rf "$verification_dir"
 
 echo "Published native runtime $PRODUCT_RELEASE_TAG"
+case "$PRODUCT_PLATFORM" in
+  linux-arm64|linux-x64)
+    BAYCAT_DIR="$BAYCAT_DIR" bash "$HERE/publish-image.sh"
+    ;;
+esac
