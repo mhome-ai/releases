@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Push the Host image for the Linux native release that just finished.
-# The Docker tag is that release version. latest is published only after both
-# architectures of the same version exist.
+# The Docker tag is the app version in the Baycat snapshot. latest is published
+# only after both architectures of the same version exist.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib.sh
@@ -15,12 +15,12 @@ case "$PRODUCT_PLATFORM" in
   *) fail "Host image publish follows a Linux native release, got $PRODUCT_PLATFORM" ;;
 esac
 [ "$PRODUCT_PLATFORM" = "${WORK_SUFFIX:?}" ] || fail "tag platform $PRODUCT_PLATFORM does not match runner $WORK_SUFFIX"
-version="$PRODUCT_VERSION"
+[ -n "${BAYCAT_DIR:-}" ] || fail "BAYCAT_DIR is required"
+version="$(node -p "require(process.argv[1]).version" "$BAYCAT_DIR/package.json")"
 printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
-  || fail "native release version must be x.y.z, got $version"
+  || fail "package.json version must be x.y.z, got $version"
 [ -n "${DOCKERHUB_USERNAME:-}" ] || fail "Missing secret DOCKERHUB_USERNAME"
 [ -n "${DOCKERHUB_TOKEN:-}" ] || fail "Missing secret DOCKERHUB_TOKEN"
-[ -n "${BAYCAT_DIR:-}" ] || fail "BAYCAT_DIR is required"
 require_cmd docker
 
 archive="${BAYCAT_DIR}/build/native-runtime-assets/${asset}"

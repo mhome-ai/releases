@@ -155,7 +155,7 @@ test("linux native release publishes the Host image after the package", () => {
   assert.match(script, /docker login/);
   assert.match(script, /mhomeai\/meow-host/);
   assert.doesNotMatch(script, /mhomeai\/meow:/);
-  assert.match(script, /PRODUCT_VERSION/);
+  assert.match(script, /package\.json/);
   assert.match(script, /host-linux-x64\.tar\.gz/);
   assert.doesNotMatch(script, /host-linux-amd64/);
   assert.match(script, /docker push/);
