@@ -151,6 +151,8 @@ test("linux native release publishes the Host image after the package", () => {
   const yaml = read(".github/workflows/run-tagged.yaml");
   assert.match(native, /publish-image\.sh/);
   assert.match(native, /npm ci --no-audit --no-fund/);
+  assert.match(native, /require\('\.\/package\.json'\)\.version/);
+  assert.match(native, /--version "\$app_version"/);
   assert.doesNotMatch(read("scripts/ci/run.sh"), /\bdocker\b/);
   assert.doesNotMatch(read("scripts/ci/run.sh"), /image\)/);
   assert.match(script, /docker login/);

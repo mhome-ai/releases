@@ -130,9 +130,12 @@ meowcore_commit="$(node scripts/ci/release-source-dependencies.js show --file re
 meowcore_tag="$(node scripts/ci/release-source-dependencies.js show --file release/sources/dependencies.json --field tag)"
 workflow_run_url="${GITHUB_SERVER_URL:-https://github.com}/${repo}/actions/runs/${GITHUB_RUN_ID:-0}"
 
+app_version="$(node -p "require('./package.json').version")"
+printf '%s\n' "$app_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
+  || fail "package.json version must be x.y.z, got $app_version"
 node scripts/release/native/generate-runtime-catalog.js \
   --platform "$PRODUCT_PLATFORM" \
-  --version "$PRODUCT_VERSION" \
+  --version "$app_version" \
   --tag "$PRODUCT_RELEASE_TAG" \
   --repository "$repo" \
   --source-repository "mhome-ai/baycat" \
@@ -182,7 +185,7 @@ if ! gh release view "$PRODUCT_RELEASE_TAG" --repo "$repo" >/dev/null 2>&1; then
     --repo "$repo" \
     --draft \
     --latest=false \
-    --title "MeowLink Runtime ${PRODUCT_VERSION}" \
+    --title "MeowLink Runtime ${app_version}" \
     --notes-file build/runtime-catalog/release-notes.md
 fi
 is_draft="$(gh release view "$PRODUCT_RELEASE_TAG" --repo "$repo" --json isDraft --jq .isDraft)"
@@ -237,12 +240,12 @@ assume_aws_role "$RUNTIME_PUBLISH_ROLE_ARN"
 publish_immutable_s3 \
   build/runtime-catalog/catalog.json \
   "$RUNTIME_CATALOG_BUCKET" \
-  "runtime/catalogs/${PRODUCT_PLATFORM}/${PRODUCT_VERSION}/catalog.json" \
+  "runtime/catalogs/${PRODUCT_PLATFORM}/${app_version}/catalog.json" \
   application/json
 publish_immutable_s3 \
   build/runtime-catalog/catalog.json.minisig \
   "$RUNTIME_CATALOG_BUCKET" \
-  "runtime/catalogs/${PRODUCT_PLATFORM}/${PRODUCT_VERSION}/catalog.json.minisig" \
+  "runtime/catalogs/${PRODUCT_PLATFORM}/${app_version}/catalog.json.minisig" \
   application/octet-stream
 
 is_draft="$(gh release view "$PRODUCT_RELEASE_TAG" --repo "$repo" --json isDraft --jq .isDraft)"
