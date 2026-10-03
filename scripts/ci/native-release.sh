@@ -66,6 +66,7 @@ case "$PRODUCT_PLATFORM" in
     [ "$PRODUCT_PLATFORM" = "linux-x64" ] && rust_target="x86_64-unknown-linux-gnu"
     cargo test --profile local-package -p runtime-release-verify
     cargo test --profile local-package -p client
+    npm ci --no-audit --no-fund
     bash scripts/release/native/package-linux-runtime.sh \
       "$PRODUCT_PLATFORM" "$rust_target" \
       "build/native-runtime/${PRODUCT_PLATFORM}"
