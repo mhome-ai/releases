@@ -154,9 +154,20 @@ node scripts/release/native/generate-runtime-catalog.js \
   --publish-assets-output build/runtime-catalog/publish-assets.txt \
   ${previous_args[@]+"${previous_args[@]}"}
 
+publish_linux_image() {
+  case "$PRODUCT_PLATFORM" in
+    linux-arm64|linux-x64)
+      BAYCAT_DIR="$BAYCAT_DIR" bash "$HERE/publish-image.sh"
+      ;;
+  esac
+}
+
 decision="$(tr -d "[:space:]" < build/runtime-catalog/publish-decision.txt)"
 if [ "$decision" = "unchanged" ]; then
   echo "No component version advanced; catalog unchanged."
+  # The Host package for this run is already built. Publish its image even
+  # when the catalog keeps the previous component assets.
+  publish_linux_image
   exit 0
 fi
 
@@ -281,8 +292,4 @@ cmp -s build/runtime-catalog/catalog.json.minisig "$verification_dir/stable-cata
 rm -rf "$verification_dir"
 
 echo "Published native runtime $PRODUCT_RELEASE_TAG"
-case "$PRODUCT_PLATFORM" in
-  linux-arm64|linux-x64)
-    BAYCAT_DIR="$BAYCAT_DIR" bash "$HERE/publish-image.sh"
-    ;;
-esac
+publish_linux_image

@@ -150,6 +150,10 @@ test("linux native release publishes the Host image after the package", () => {
   const native = read("scripts/ci/native-release.sh");
   const yaml = read(".github/workflows/run-tagged.yaml");
   assert.match(native, /publish-image\.sh/);
+  assert.match(
+    native,
+    /No component version advanced; catalog unchanged\.[\s\S]*?\n  publish_linux_image\n  exit 0/
+  );
   assert.match(native, /npm ci --no-audit --no-fund/);
   assert.match(native, /require\('\.\/package\.json'\)\.version/);
   assert.match(native, /--version "\$app_version"/);
