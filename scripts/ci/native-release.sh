@@ -52,6 +52,7 @@ case "$PRODUCT_PLATFORM" in
     rust_target="aarch64-apple-darwin"
     [ "$PRODUCT_PLATFORM" = "darwin-x64" ] && rust_target="x86_64-apple-darwin"
     require_cmd codesign security cc
+    npm ci --no-audit --no-fund
     bash scripts/release/native/quality-gate.sh
     SIGNING_KEYCHAIN=1
     bash "$CI_ROOT/macos-signing-keychain.sh" acquire native-runtime

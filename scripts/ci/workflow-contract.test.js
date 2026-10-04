@@ -155,6 +155,10 @@ test("linux native release publishes the Host image after the package", () => {
     /No component version advanced; catalog unchanged\.[\s\S]*?\n  publish_linux_image\n  exit 0/
   );
   assert.match(native, /npm ci --no-audit --no-fund/);
+  assert.match(
+    native,
+    /require_cmd codesign security cc\n    npm ci --no-audit --no-fund\n    bash scripts\/release\/native\/quality-gate\.sh/
+  );
   assert.match(native, /require\('\.\/package\.json'\)\.version/);
   assert.match(native, /--version "\$app_version"/);
   assert.doesNotMatch(read("scripts/ci/run.sh"), /\bdocker\b/);
