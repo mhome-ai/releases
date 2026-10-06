@@ -60,6 +60,22 @@ verify_macos_runtime_catalog() {
   rm -rf "$directory"
 }
 
+resolve_windows_codesign_home() {
+  local candidate
+  for candidate in "${CODESIGNTOOL_HOME:-}" "C:\\CodeSignTool" "/c/CodeSignTool" "/C/CodeSignTool"; do
+    [ -n "$candidate" ] || continue
+    if [ -d "$candidate" ]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  if powershell.exe -NoProfile -Command "if (Test-Path -LiteralPath 'C:\CodeSignTool') { exit 0 } else { exit 1 }"; then
+    printf '%s' 'C:\CodeSignTool'
+    return 0
+  fi
+  return 1
+}
+
 windows_desktop_preflight() {
   require_cmd java curl powershell.exe
   local name
@@ -67,30 +83,28 @@ windows_desktop_preflight() {
     eval "value=\${$name:-}"
     [ -n "$value" ] || fail "Missing $name (needed before the Windows desktop compile)"
   done
-  if [ -z "${CODESIGNTOOL_HOME:-}" ] && [ -d /c/CodeSignTool ]; then
-    export CODESIGNTOOL_HOME='C:\CodeSignTool'
-  fi
-  if [ -n "${CODESIGNTOOL_HOME:-}" ]; then
+  local home
+  if home="$(resolve_windows_codesign_home)"; then
+    export CODESIGNTOOL_HOME="$home"
     echo "Using existing CodeSignTool at $CODESIGNTOOL_HOME"
   fi
 }
 
 install_windows_codesign() {
   require_cmd java curl
-  if [ -n "${CODESIGNTOOL_HOME:-}" ]; then
-    local home="$CODESIGNTOOL_HOME"
-    if command -v cygpath >/dev/null 2>&1; then
-      home="$(cygpath -u "$CODESIGNTOOL_HOME" 2>/dev/null || printf '%s' "$CODESIGNTOOL_HOME")"
-    fi
-    if [ -d "$home" ] || [ -d "$CODESIGNTOOL_HOME" ]; then
-      echo "Skipping CodeSignTool download; using $CODESIGNTOOL_HOME"
-      return 0
-    fi
+  local home
+  if home="$(resolve_windows_codesign_home)"; then
+    export CODESIGNTOOL_HOME="$home"
+    echo "Skipping CodeSignTool download; using $CODESIGNTOOL_HOME"
+    return 0
   fi
+  echo "CodeSignTool not found locally; downloading from ssl.com with retries"
   local root="${RUNNER_TEMP:-$WORK_ROOT}/meow-codesign"
   mkdir -p "$root"
   local zip="$root/codesigntool.zip"
-  curl -fsSL "https://www.ssl.com/download/codesigntool-for-windows/" -o "$zip"
+  curl --location --fail --retry 8 --retry-all-errors --retry-delay 2 \
+    --retry-max-time 180 --connect-timeout 20 \
+    -o "$zip" "https://www.ssl.com/download/codesigntool-for-windows/"
   local win_zip="$zip" win_root="$root"
   if command -v cygpath >/dev/null 2>&1; then
     win_zip="$(cygpath -w "$zip")"
