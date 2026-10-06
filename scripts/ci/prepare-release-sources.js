@@ -94,7 +94,7 @@ function fetchTag(repoDir, tag) {
     fail(`tag ${tag} must be annotated, not a lightweight tag`);
   }
   git(repoDir, ["fetch", "--prune", "origin"]);
-  git(repoDir, ["fetch", "origin", `refs/tags/${tag}:refs/tags/${tag}`]);
+  git(repoDir, ["fetch", "origin", `+refs/tags/${tag}:refs/tags/${tag}`]);
   const local = git(repoDir, ["rev-parse", `${tag}^{commit}`]);
   if (local !== peeled.sha) {
     fail(

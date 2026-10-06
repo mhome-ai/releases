@@ -15,21 +15,31 @@ require_mhome_clone pallas-cat
 require_mhome_clone releases
 require_cmd git node cargo gh
 
+HEARTBEAT_PID=""
+start_heartbeat() {
+  (
+    while true; do
+      echo "[heartbeat] $(date -u +%Y-%m-%dT%H:%M:%SZ) desktop release still running"
+      sleep 30
+    done
+  ) &
+  HEARTBEAT_PID=$!
+}
+stop_heartbeat() {
+  if [ -n "${HEARTBEAT_PID:-}" ]; then
+    kill "$HEARTBEAT_PID" 2>/dev/null || true
+    HEARTBEAT_PID=""
+  fi
+}
+
 cleanup() {
+  stop_heartbeat
   if [ "${SIGNING_KEYCHAIN:-}" = "1" ]; then
     bash "$CI_ROOT/macos-signing-keychain.sh" release desktop || true
   fi
   cleanup_worktree || echo "::warning::release worktree cleanup failed for $WORK_ROOT"
 }
 trap cleanup EXIT
-
-prepare_product_sources --with-meowcore --with-pallas
-cd "$BAYCAT_DIR"
-APP_VERSION="$(node -p "require('./package.json').version")"
-node scripts/release/resolve-release-platforms.js --event push --ref "$tag" >/dev/null
-notes_file="$BAYCAT_DIR/build/release-notes.md"
-mkdir -p "$BAYCAT_DIR/build"
-node scripts/release/format-release-notes.js --version "$APP_VERSION" > "$notes_file"
 
 verify_macos_runtime_catalog() {
   local directory
@@ -50,8 +60,33 @@ verify_macos_runtime_catalog() {
   rm -rf "$directory"
 }
 
+windows_desktop_preflight() {
+  require_cmd java curl powershell.exe
+  local name
+  for name in SSL_COM_USERNAME SSL_COM_PASSWORD SSL_COM_CREDENTIAL_ID SSL_COM_TOTP_SECRET TAURI_SIGNING_PRIVATE_KEY; do
+    eval "value=\${$name:-}"
+    [ -n "$value" ] || fail "Missing $name (needed before the Windows desktop compile)"
+  done
+  if [ -z "${CODESIGNTOOL_HOME:-}" ] && [ -d /c/CodeSignTool ]; then
+    export CODESIGNTOOL_HOME='C:\CodeSignTool'
+  fi
+  if [ -n "${CODESIGNTOOL_HOME:-}" ]; then
+    echo "Using existing CodeSignTool at $CODESIGNTOOL_HOME"
+  fi
+}
+
 install_windows_codesign() {
   require_cmd java curl
+  if [ -n "${CODESIGNTOOL_HOME:-}" ]; then
+    local home="$CODESIGNTOOL_HOME"
+    if command -v cygpath >/dev/null 2>&1; then
+      home="$(cygpath -u "$CODESIGNTOOL_HOME" 2>/dev/null || printf '%s' "$CODESIGNTOOL_HOME")"
+    fi
+    if [ -d "$home" ] || [ -d "$CODESIGNTOOL_HOME" ]; then
+      echo "Skipping CodeSignTool download; using $CODESIGNTOOL_HOME"
+      return 0
+    fi
+  fi
   local root="${RUNNER_TEMP:-$WORK_ROOT}/meow-codesign"
   mkdir -p "$root"
   local zip="$root/codesigntool.zip"
@@ -67,9 +102,13 @@ install_windows_codesign() {
 }
 
 verify_windows_installer() {
-  powershell.exe -NoProfile -Command '
-    $root = Join-Path (Get-Location) "tauri/target/release"
-    $files = @(Get-ChildItem "$root/bundle/nsis/*.exe")
+  local win_root="$PWD/tauri/target/release"
+  if command -v cygpath >/dev/null 2>&1; then
+    win_root="$(cygpath -w "$win_root")"
+  fi
+  MEOW_NSIS_ROOT="$win_root" powershell.exe -NoProfile -Command '
+    $root = $env:MEOW_NSIS_ROOT
+    $files = @(Get-ChildItem -LiteralPath (Join-Path $root "bundle\nsis") -Filter *.exe)
     if ($files.Count -ne 1) { throw "Expected exactly one NSIS installer" }
     foreach ($file in $files) {
       $signature = Get-AuthenticodeSignature $file.FullName
@@ -78,6 +117,17 @@ verify_windows_installer() {
     }
   '
 }
+
+if [ "$PRODUCT_PREFIX" = "aw" ]; then
+  windows_desktop_preflight
+fi
+prepare_product_sources --with-meowcore --with-pallas
+cd "$BAYCAT_DIR"
+APP_VERSION="$(node -p "require('./package.json').version")"
+node scripts/release/resolve-release-platforms.js --event push --ref "$tag" >/dev/null
+notes_file="$BAYCAT_DIR/build/release-notes.md"
+mkdir -p "$BAYCAT_DIR/build"
+node scripts/release/format-release-notes.js --version "$APP_VERSION" > "$notes_file"
 
 case "$PRODUCT_PREFIX" in
   am)
@@ -101,7 +151,10 @@ case "$PRODUCT_PREFIX" in
       --allow-unstapled
     ;;
   aw)
-    require_cmd java curl powershell.exe
+    windows_desktop_preflight
+    export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=2048}"
+    export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
+    start_heartbeat
     sh scripts/release/mac/audit-mac-release-scripts.sh
     bash scripts/ci/ci-install-release-deps.sh "$APP_VERSION"
     install_windows_codesign

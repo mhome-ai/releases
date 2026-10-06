@@ -85,7 +85,7 @@ jobs:
             git -C "$releases" fetch origin "${GITHUB_REF}"
             git -C "$releases" worktree add --detach "$work/releases" "$ORCHESTRATOR_REF"
           else
-            git -C "$releases" fetch origin "refs/tags/${tag}:refs/tags/${tag}"
+            git -C "$releases" fetch origin "+refs/tags/${tag}:refs/tags/${tag}"
             git -C "$releases" worktree add --detach "$work/releases" "$tag"
           fi
           export WORK_ID="$work_id" WORK_ROOT="$work" RELEASES_DIR="$work/releases" MHOME_ROOT="$mhome"
