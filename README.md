@@ -78,7 +78,8 @@ Plugin 源码必须来自 `origin/main` 上的 annotated `t` tag。没有 `t` �
 Desktop app versions are independent across platforms. GitHub platform Releases
 retain immutable packages, signatures and `latest.json`; new releases never
 select GitHub global Latest. After public manifest and updater-package downloads
-have been checked against the build output, `scripts/ci/publish-desktop-update.sh`
+have been checked against the build output and the manifest signature has been
+verified against the client's configured updater public key, `scripts/ci/publish-desktop-update.sh`
 promotes only the current release's feeds to
 `https://install.mhome.ai/desktop/stable/<OS-arch>/latest.json`.
 Mac `am` updates `darwin-aarch64` and `darwin-x86_64`; Windows `aw` updates

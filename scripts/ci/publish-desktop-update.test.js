@@ -35,6 +35,13 @@ if (tool === "gh") {
     if (content === undefined) fail("missing public object: " + url);
     fs.writeFileSync(option("-o"), content);
   }
+} else if (tool === "cargo") {
+  const signature = fs.readFileSync(option("--signature"), "utf8");
+  const name = path.basename(option("--archive"));
+  const entry = Object.values(JSON.parse(s.manifest).platforms).find(p => p.url.endsWith("/" + name));
+  if (!entry || signature !== entry.signature || fs.readFileSync(option("--archive"), "utf8") !== s.packages[name]) fail("verifier did not receive client signature and public package");
+  if (!option("--tauri-config").endsWith("/tauri/tauri.conf.json")) fail("wrong trust anchor");
+  if (s.failure === "signature") fail("signature does not match archive and configured public key");
 } else if (tool === "aws") {
   if (args[0] === "sts") console.log("offline-access offline-secret offline-session");
   else if (args[0] === "s3api" && args[1] === "head-object") {
@@ -105,7 +112,7 @@ function run(
     artifacts = path.join(root, "artifacts");
   fs.mkdirSync(bin);
   fs.mkdirSync(artifacts);
-  for (const tool of ["gh", "curl", "aws"])
+  for (const tool of ["gh", "curl", "aws", "cargo"])
     fs.writeFileSync(path.join(bin, tool), `#!${process.execPath}\n${fake}`, {
       mode: 0o755,
     });
@@ -187,6 +194,10 @@ test("Mac promotion leaves a differently versioned Windows feed byte-for-byte un
       ).length,
     2
   );
+  assert.equal(
+    state.calls.slice(0, firstPut).filter((a) => a[0] === "cargo").length,
+    2
+  );
 });
 test("Windows promotion leaves both Mac feeds unchanged", (t) => {
   const mac = feeds(manifest("1.2.8", "am20261009-01"));
@@ -207,7 +218,7 @@ test("an exact retry performs no PUT and verifies the public feed", (t) => {
   assert.equal(puts(state).length, 0);
   assert.match(result.stdout, /Verified desktop update/);
 });
-for (const failure of ["manifest", "package", "head", "put"]) {
+for (const failure of ["manifest", "package", "signature", "head", "put"]) {
   test(`${failure} failure does not replace the previous feeds`, (t) => {
     const previous = feeds(manifest("1.2.7", "am20261008-01"));
     const { result, state } = run(t, { objects: previous, failure });

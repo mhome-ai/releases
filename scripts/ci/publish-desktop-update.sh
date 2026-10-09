@@ -10,7 +10,7 @@ tag="${2:?release tag is required}"
 artifact_root="${3:?artifact root is required}"
 baycat="${4:?Baycat source directory is required}"
 helper="$baycat/scripts/release/desktop-update-manifest.js"
-require_cmd node gh curl aws
+require_cmd node gh curl aws cargo
 [ -n "${DESKTOP_PUBLISH_ROLE_ARN:-}" ] || fail "Missing org variable DESKTOP_PUBLISH_ROLE_ARN"
 [ -f "$artifact_root/latest.json" ] || fail "Missing release manifest"
 work="$(mktemp -d "${TMPDIR:-/tmp}/desktop-update.XXXXXX")"
@@ -34,6 +34,17 @@ while IFS=$'\t' read -r target url asset; do
   curl --fail --location --silent --show-error --max-time 1800 --retry 3 --retry-all-errors \
     "$url" -o "$work/$asset"
   cmp -s "$package" "$work/$asset" || fail "Public updater package differs: $target"
+  # Verify the exact signature clients will read, against their configured key.
+  # Tauri CLI only warns when its signing key differs from that public key.
+  node -e '
+    const fs = require("node:fs");
+    const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    process.stdout.write(manifest.platforms[process.argv[2]].signature);
+  ' "$work/next/$target.json" "$target" > "$work/$target.sig"
+  cargo run --profile local-package --quiet --manifest-path "$baycat/Cargo.toml" \
+    -p runtime-manager --bin desktop-updater-verify -- \
+    --archive "$work/$asset" --signature "$work/$target.sig" \
+    --tauri-config "$baycat/tauri/tauri.conf.json"
 done < "$work/targets"
 
 assume_aws_role "$DESKTOP_PUBLISH_ROLE_ARN"
