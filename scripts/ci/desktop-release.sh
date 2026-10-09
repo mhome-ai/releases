@@ -13,7 +13,10 @@ require_mhome_clone meowcore-rust
 require_mhome_clone agent
 require_mhome_clone pallas-cat
 require_mhome_clone releases
-require_cmd git node cargo gh
+require_cmd git node cargo gh aws curl
+[ -n "${DESKTOP_PUBLISH_ROLE_ARN:-}" ] || fail "Missing org variable DESKTOP_PUBLISH_ROLE_ARN"
+pub_date="$(git -C "$RELEASES_DIR" for-each-ref --format='%(creatordate:iso-strict)' "refs/tags/$PRODUCT_RELEASE_TAG")"
+[ -n "$pub_date" ] || fail "Missing desktop release tag date"
 
 HEARTBEAT_PID=""
 start_heartbeat() {
@@ -40,6 +43,37 @@ cleanup() {
   cleanup_worktree || echo "::warning::release worktree cleanup failed for $WORK_ROOT"
 }
 trap cleanup EXIT
+
+prepare_product_sources --with-meowcore --with-pallas
+cd "$BAYCAT_DIR"
+APP_VERSION="$(node -p "require('./package.json').version")"
+node scripts/release/resolve-release-platforms.js --event push --ref "$tag" >/dev/null
+notes_file="$BAYCAT_DIR/build/release-notes.md"
+mkdir -p "$BAYCAT_DIR/build"
+node scripts/release/format-release-notes.js --version "$APP_VERSION" > "$notes_file"
+
+# A public release already owns immutable signed binaries. A retry must reuse
+# them, especially on Windows where rebuilding would change signing timestamps.
+release_state=""
+if release_state="$(gh release view "$PRODUCT_RELEASE_TAG" --repo "$repo" --json isDraft --jq .isDraft 2> build/desktop-release-lookup-error)"; then
+  if [ "$release_state" = false ]; then
+    mkdir -p release-artifacts
+    gh release download "$PRODUCT_RELEASE_TAG" --repo "$repo" --dir release-artifacts
+    node scripts/release/desktop-update-manifest.js \
+      --manifest release-artifacts/latest.json --repo "$repo" --tag "$PRODUCT_RELEASE_TAG" \
+      --expected-version "$APP_VERSION" --output build/desktop-update-resume
+    node -e '
+      const fs = require("node:fs");
+      const provenance = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      if (provenance.baycat?.revision !== process.argv[2]) throw new Error("Published desktop source does not match this snapshot");
+    ' release-artifacts/release-source-provenance.json "$BAYCAT_REVISION"
+    bash "$CI_ROOT/publish-desktop-update.sh" "$repo" "$PRODUCT_RELEASE_TAG" "$BAYCAT_DIR/release-artifacts" "$BAYCAT_DIR"
+    exit 0
+  fi
+else
+  grep -Eq 'release not found|HTTP 404|Not Found' build/desktop-release-lookup-error \
+    || { cat build/desktop-release-lookup-error >&2; fail "Cannot inspect existing desktop release"; }
+fi
 
 verify_macos_runtime_catalog() {
   local directory
@@ -132,17 +166,6 @@ verify_windows_installer() {
   '
 }
 
-if [ "$PRODUCT_PREFIX" = "aw" ]; then
-  windows_desktop_preflight
-fi
-prepare_product_sources --with-meowcore --with-pallas
-cd "$BAYCAT_DIR"
-APP_VERSION="$(node -p "require('./package.json').version")"
-node scripts/release/resolve-release-platforms.js --event push --ref "$tag" >/dev/null
-notes_file="$BAYCAT_DIR/build/release-notes.md"
-mkdir -p "$BAYCAT_DIR/build"
-node scripts/release/format-release-notes.js --version "$APP_VERSION" > "$notes_file"
-
 case "$PRODUCT_PREFIX" in
   am)
     require_cmd codesign security curl
@@ -162,6 +185,7 @@ case "$PRODUCT_PREFIX" in
       --repo "$repo" \
       --tag "$PRODUCT_RELEASE_TAG" \
       --notes-file "$notes_file" \
+      --pub-date "$pub_date" \
       --allow-unstapled
     ;;
   aw)
@@ -175,19 +199,13 @@ case "$PRODUCT_PREFIX" in
     npm run tauri:build:signed
     verify_windows_installer
     mkdir -p release-artifacts/windows
+    cp build/release-source-provenance.json release-artifacts/
     cp tauri/target/release/bundle/nsis/*.exe tauri/target/release/bundle/nsis/*.sig \
       release-artifacts/windows/ 2>/dev/null || fail "missing Windows NSIS artifacts"
-    bash scripts/ci/ci-fetch-release-latest-json.sh \
-      --repo "$repo" --tag "$PRODUCT_RELEASE_TAG" --output-dir release-artifacts
     node scripts/release/generate-latest-json.js \
-      --repo "$repo" --tag "$PRODUCT_RELEASE_TAG" --notes-file "$notes_file" \
-      --artifact-root release-artifacts --output release-artifacts/latest-patch.json \
+      --repo "$repo" --tag "$PRODUCT_RELEASE_TAG" --notes-file "$notes_file" --pub-date "$pub_date" \
+      --artifact-root release-artifacts --output release-artifacts/latest.json \
       --require-windows-only
-    node scripts/release/merge-latest-json.js \
-      --base release-artifacts/latest.json \
-      --patch release-artifacts/latest-patch.json \
-      --output release-artifacts/latest.json
-    rm -f release-artifacts/latest-patch.json
     bash scripts/release/publish-desktop-release-gh.sh \
       --repo "$repo" --tag "$PRODUCT_RELEASE_TAG" \
       --notes-file "$notes_file" --artifact-root release-artifacts
@@ -195,3 +213,5 @@ case "$PRODUCT_PREFIX" in
   al) fail "Linux Desktop is not enabled" ;;
   *) fail "unknown desktop prefix $PRODUCT_PREFIX" ;;
 esac
+
+bash "$CI_ROOT/publish-desktop-update.sh" "$repo" "$PRODUCT_RELEASE_TAG" "$BAYCAT_DIR/release-artifacts" "$BAYCAT_DIR"

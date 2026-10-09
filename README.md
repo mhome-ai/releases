@@ -34,7 +34,7 @@ One workflow run is one machine. Native `nlr`/`nlx`/`nmr`/`nmx`/`nw`, Desktop
 the Mac Mini and the `native-runtime-stable-macos` lock, so they queue. `am` and `aw` stay separate platform tags and share the
 `desktop-release` concurrency group. After a Linux Native release is public, the same workflow pushes that Host package to Docker Hub `mhomeai/meow-host` using the Native version. `latest` is published when both architectures of that version exist. This repo does not publish to GHCR. `deploy-meow-compose.yaml` publishes Baycat `docker/meow-compose.yml` to `https://install.mhome.ai/docker/stable/meow-compose.yml` on the same bucket.
 
-Signing keys are repository or org Secrets. `APPLE_TEAM_ID` and the three
+Signing keys are repository or org Secrets. `APPLE_TEAM_ID` and the
 publisher role ARNs are org Variables, visible to this public repo. Bucket
 name and `https://install.mhome.ai` stay in `scripts/ci/lib.sh`. Workflows
 do not use GitHub Environments.
@@ -72,3 +72,46 @@ Agent is also a source input. Provision `~/.mhome/agent` from the private `mhome
 Plugin 使用 `run-tagged-plugin.yaml` 的单个作业，复用平台已有的自托管 runner：macOS 在 alimao 的 `release-macos-primary`，Linux 在现有 `release-linux-arm64` / `release-linux-amd64`。同一 runner 先运行质量检查并构建，再核对本地产物的源码、编排 commit、tag 和摘要，最后签名上传。不经过 GitHub artifact 中转，也不要求额外机器。构建步骤不注入签名 secret；同机运行属于可信源码发布流程，不宣称凭据或物理隔离。
 
 Plugin 源码必须来自 `origin/main` 上的 annotated `t` tag。没有 `t` 时不回退到 `r`。审核规则由维护者在 GitHub 配置，发布脚本不读取分支保护或历史 CI 状态，不需要跨仓库 API Token；当前冻结源码仍须通过本次构建的 `quality-gate.sh`。源码读取沿用现有 Git SSH 权限。Plugin CI 也使用现有自托管 runner，从预置仓库创建独立 worktree，只自动运行 main 提交；不在发布机上自动运行未经审核的第三方 PR。
+
+## Desktop platform update feeds
+
+Desktop app versions are independent across platforms. GitHub platform Releases
+retain immutable packages, signatures and `latest.json`; new releases never
+select GitHub global Latest. After public manifest and updater-package downloads
+have been checked against the build output, `scripts/ci/publish-desktop-update.sh`
+promotes only the current release's feeds to
+`https://install.mhome.ai/desktop/stable/<OS-arch>/latest.json`.
+Mac `am` updates `darwin-aarch64` and `darwin-x86_64`; Windows `aw` updates
+`windows-x86_64`. Existing tags, source snapshots and the `desktop-release` queue
+stay in place. There is no cross-platform manifest merge or transaction.
+
+A feed cannot move to a lower app version or change package/metadata at the same
+version. Exact retries leave the object unchanged and verify the public address.
+A public-release retry downloads the original signed artifacts and verifies the
+frozen app version and source revision before skipping the build. A failure before
+promotion leaves stable untouched; a failure after a successful PUT is reported
+for confirmation/retry, without automatically reverting it.
+
+Deployment prerequisites (configure before releasing new clients):
+
+- Set org Variable `DESKTOP_PUBLISH_ROLE_ARN`, visible to this repo. An existing
+  distribution role may be used if its OIDC trust and object permissions cover
+  desktop publication; this change does not create or modify an AWS role.
+- Install AWS CLI on both desktop runners. Grant `s3:ListBucket` on the existing
+  distribution bucket so a missing object's HEAD returns 404, and `s3:GetObject`
+  / `s3:PutObject` on `desktop/stable/*`.
+- Make that CDN path publicly readable with Minimum TTL 0 and origin cache headers
+  respected. Stable JSON is uploaded with
+  `no-cache,no-store,max-age=0,must-revalidate`.
+- Freeze a Baycat `t` containing the new client endpoint and manifest helper;
+  create the platform tag on a Releases commit containing the new orchestrator.
+  Old tagged source/orchestrator snapshots do not gain the new behavior on rerun.
+- Existing clients using global Latest need a separate migration if already
+  distributed. New clients never fall back to the shared endpoint.
+
+Offline rollout regression tests use an adjacent current Baycat checkout:
+
+```bash
+node --test scripts/ci/desktop-release.test.js scripts/ci/publish-desktop-update.test.js
+# For a development worktree, set DESKTOP_TEST_BAYCAT to that Baycat checkout.
+```
