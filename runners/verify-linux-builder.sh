@@ -33,6 +33,10 @@ minisign -v
 git --version
 cmake --version
 python3 --version
+python3 /usr/local/bin/cleanup-job-target.py --help >/dev/null
+test -x "$ACTIONS_RUNNER_HOOK_JOB_STARTED"
+test -x "$ACTIONS_RUNNER_HOOK_JOB_COMPLETED"
+bash -n "$ACTIONS_RUNNER_HOOK_JOB_STARTED" "$ACTIONS_RUNNER_HOOK_JOB_COMPLETED"
 protoc --version
 pkg-config --modversion dbus-1 gtk+-3.0 ayatana-appindicator3-0.1 libpcap
 echo "Debian 11 builder verified ($(dpkg --print-architecture), glibc 2.31)"

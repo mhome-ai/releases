@@ -45,9 +45,38 @@ docker run --rm --platform linux/amd64 --entrypoint verify-linux-builder.sh meow
 
 An edited Dockerfile does not update an existing runner. Rebuild and replace
 each idle container with its existing compose project and named volumes;
-registration, source checkouts and caches remain in those volumes. Do not use
-`down -v`. Cargo objects for this baseline live under `cargo-target/debian11`,
-separately from old Ubuntu objects.
+registration, source checkouts and downloaded dependencies remain in those volumes.
+Do not use `down -v`. Cargo objects live under `cargo-target/debian11` only for
+the duration of one job.
+
+## Compiled artifact lifecycle
+
+Both runner images install job-started and job-completed hooks. The completed
+hook empties the runner's dedicated `cargo-target` volume after all workflow
+steps and action post-steps, including packaging, signing, upload and verification.
+The started hook removes leftovers from an interrupted previous job. All profiles,
+architectures and historical baseline directories are removed without a size threshold.
+Builds within one job can reuse output; later jobs start with a cold target.
+
+Cleanup preserves the volume mount, source repositories, Cargo downloads, Rust
+toolchains, model downloads, SSH keys and runner registration. It rejects symlinks
+at the volume root, nested mounts, Git sources, active build processes and open
+target files. Manual maintenance also requires the runner listener to be stopped.
+Cleanup has a five-minute timeout. Post-job failures emit warnings without changing
+a completed publication; pre-job failures block a new build until cleanup succeeds.
+The hooks do not touch the separate Harness device builder or run global Docker prune.
+
+Linux native image publishing uses a job-owned Buildx builder with automatic
+post-step removal, including its build state. Images are loaded locally for the
+existing push/verification steps. Other image workflows must also use job-owned
+builders; downloaded base/toolchain images and published runtime images have a
+separate lifecycle. Do not export local Cargo target directories between jobs.
+
+Test cleanup only in disposable fixtures:
+
+```sh
+python3 -B runners/test_cleanup_job_target.py
+```
 
 Put a read key for `baycat`, `plugin`, `meowcore-rust`, `agent`, `agent-cloud`,
 `foundation`, and `releases` at

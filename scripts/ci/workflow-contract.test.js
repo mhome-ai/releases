@@ -72,12 +72,22 @@ test("run-tagged has one job and does not use GitHub Environments", () => {
   assert.doesNotMatch(text, /github_environment/);
   assert.doesNotMatch(text, /^\s+environment:/m);
   assert.doesNotMatch(text, /run_open:/);
-  assert.doesNotMatch(text, /^\s+if:/m);
+  assert.doesNotMatch(text, /^    if:/m);
   for (const file of productWorkflows()) {
     const caller = read(file);
     assert.doesNotMatch(caller, /github_environment/, file);
     assert.doesNotMatch(caller, /^\s+environment:/m, file);
   }
+});
+
+test("Linux native images use a disposable builder with local image loading", () => {
+  const text = read(".github/workflows/run-tagged.yaml");
+  assert.match(text, /if: runner\.os == 'Linux' && inputs\.channel == 'native'/);
+  assert.match(text, /docker\/setup-buildx-action@v3/);
+  assert.match(text, /driver-opts: default-load=true/);
+  assert.match(text, /keep-state: false/);
+  assert.match(text, /cleanup: true/);
+  assert.match(text, /BUILDX_BUILDER: \$\{\{ steps\.buildx\.outputs\.name \}\}/);
 });
 
 test("product docker catalogs and appliance tags are gone", () => {

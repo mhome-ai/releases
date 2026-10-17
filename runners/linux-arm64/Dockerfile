@@ -97,6 +97,7 @@ RUN useradd --create-home --uid 1001 --shell /bin/bash runner \
 COPY --chmod=755 linux-arm64/entrypoint.sh /usr/local/bin/linux-arm64-runner-entrypoint.sh
 COPY --chmod=755 ensure-mhome-sources.sh /usr/local/bin/ensure-mhome-sources.sh
 COPY --chmod=755 verify-linux-builder.sh /usr/local/bin/verify-linux-builder.sh
+COPY --chmod=755 cleanup-job-target.py job-started.sh job-completed.sh /usr/local/bin/
 
 USER runner
 WORKDIR /home/runner
@@ -105,6 +106,8 @@ ENV HOME=/home/runner \
     CARGO_HOME=/home/runner/.cargo \
     RUSTUP_HOME=/home/runner/.rustup \
     CARGO_TARGET_DIR=/home/runner/.cache/cargo-target/debian11 \
+    ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started.sh \
+    ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed.sh \
     MHOME_DOWNLOAD_CACHE_ROOT=/home/runner/.cache/mhome-downloads \
     CARGO_TERM_COLOR=always \
     PATH=/home/runner/.cargo/bin:/usr/local/bin:/usr/bin:/bin

@@ -2,10 +2,9 @@
 
 Docker template for a long-lived GitHub Actions runner that builds Baycat
 Linux ARM64 natives. The image is Debian 11 so the glibc baseline is 2.31.
-Build objects use the `debian11` subdirectory of the persistent
-`cargo-target` volume, so older Ubuntu objects cannot be reused across the
-glibc baseline change. Existing caches and volumes are preserved. A future
-baseline change must use a new cache subdirectory.
+Build objects use `cargo-target/debian11` during a job and are removed at job end.
+See the shared [compiled artifact lifecycle](../README.md#compiled-artifact-lifecycle)
+for hooks, failure behavior and preserved data.
 
 Requires a native ARM64 Docker host (Apple Silicon or ARM Linux). Do not use
 this compose file on x64; that path is QEMU and is not a release builder.

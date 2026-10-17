@@ -2,10 +2,10 @@
 
 Docker template for a long-lived GitHub Actions runner that builds Baycat
 Linux amd64 natives (`linux-x64` / `x86_64-unknown-linux-gnu`). The image
-is Debian 11 so the glibc baseline is 2.31. Build objects use the `debian11` subdirectory of the persistent
-`cargo-target` volume, so older Ubuntu objects cannot be reused across the
-glibc baseline change. Existing caches and volumes are preserved. A future
-baseline change must use a new cache subdirectory.
+is Debian 11 so the glibc baseline is 2.31. Build objects use `cargo-target/debian11`
+during a job and are removed at job end. See the shared
+[compiled artifact lifecycle](../README.md#compiled-artifact-lifecycle) for hooks,
+failure behavior and preserved data.
 
 The ARM sibling is `../linux-arm64/`. Both containers can stay up at once;
 they use different compose projects, labels, and named volumes.

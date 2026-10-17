@@ -34,9 +34,19 @@ jobs:
       id-token: write
       packages: write
     steps:
+      - name: Prepare a disposable Linux image builder
+        if: runner.os == 'Linux' && inputs.channel == 'native'
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          use: false
+          driver-opts: default-load=true
+          keep-state: false
+          cleanup: true
       - name: Fetch tagged orchestrator and run
         shell: bash
         env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
           RELEASE_TAG: ${{ inputs.tag }}
           RELEASE_CHANNEL: ${{ inputs.channel }}
           ORCHESTRATOR_REF: ${{ inputs.orchestrator_ref }}
