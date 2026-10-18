@@ -119,10 +119,26 @@ if [ -f "$catalog_dir/verify-origin-absence" ]; then
   count="$(aws s3api list-objects-v2 --bucket "$RUNTIME_CATALOG_BUCKET" --prefix "plugins/stable/${PRODUCT_PLATFORM}/" --max-keys 1 --query KeyCount --output text)"
   [ "$count" = 0 ] || fail "Refusing to initialize an existing Plugin Catalog hidden by the CDN"
 fi
-for name in catalog.json catalog.json.minisig catalog.bundle.json; do
-  publish_immutable_s3 "$catalog_dir/$name" "$RUNTIME_CATALOG_BUCKET" \
-    "plugins/catalogs/${PRODUCT_PLATFORM}/${PRODUCT_VERSION}/$name" application/octet-stream
-done
+# Reconstruct each independent release manifest also when resuming an existing
+# GitHub release. The signed index is only promoted after all version objects exist.
+node - "$catalog_dir/catalog.json" "$PRODUCT_PLATFORM" "$catalog_dir" <<'NODE'
+const fs = require("node:fs");
+const { writePluginManifests } = require(process.cwd() + "/scripts/release/native/plugin-manifest");
+writePluginManifests(JSON.parse(fs.readFileSync(process.argv[2])), process.argv[3], process.argv[4]);
+NODE
+if [ -n "${PLUGIN_CATALOG_PRIVATE_KEY_B64:-}" ]; then
+  (umask 077; printf '%s' "$PLUGIN_CATALOG_PRIVATE_KEY_B64" | base64 --decode > "$catalog_dir/catalog.key")
+fi
+node "$CI_ROOT/plugin-manifests.js" "$catalog_dir" "$RUNTIME_CATALOG_BUCKET" \
+  "$(node scripts/release/native/catalog-config.js public-key)" "$catalog_dir/catalog.key"
+rm -f "$catalog_dir/catalog.key"
+node - "$catalog_dir/manifests.json" > "$catalog_dir/manifest-uploads.tsv" <<'NODE'
+for (const m of require(process.argv[2])) console.log(`${m.id}\t${m.key}`);
+NODE
+while IFS=$'\t' read -r plugin_id object_key; do
+  publish_immutable_s3 "$catalog_dir/manifests/$plugin_id.json.bundle.json" "$RUNTIME_CATALOG_BUCKET" \
+    "$object_key" application/json
+done < "$catalog_dir/manifest-uploads.tsv"
 gh release edit "$PRODUCT_RELEASE_TAG" --repo "$repo" --draft=false --latest=false
 for name in catalog.json catalog.json.minisig; do
   curl --fail --location --silent --show-error --retry 8 --retry-all-errors \
