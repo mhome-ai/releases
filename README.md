@@ -116,3 +116,41 @@ Offline rollout regression tests use an adjacent current Baycat checkout:
 node --test scripts/ci/desktop-release.test.js scripts/ci/publish-desktop-update.test.js
 # For a development worktree, set DESKTOP_TEST_BAYCAT to that Baycat checkout.
 ```
+
+## Card DevKit distribution
+
+`card-devkit.yaml` is an independent manual workflow. It consumes one validated
+Pallas `vX.Y.Z` plus its full commit, builds the standalone tarball, installs it
+outside the source tree and exercises authoring/type checks before publication.
+Pallas v-tag validation also checks the DevKit and records the exact source
+identity. Existing native/plugin `r` → `t` attempts and website deployments are
+separate release flows; this workflow never reads the website bucket.
+
+Artifacts live at `https://install.mhome.ai/card-devkit/<version>/` in the existing
+install distribution bucket. `devkit.json` records source tag/commit and each
+artifact's byte length/SHA-256. Metadata, declarations, schemas, author guide and
+tarball are immutable. An occupied version accepts only identical bytes.
+`card-devkit/index.json` is promoted using an ETag condition after every version
+file has passed public-download verification. Publishing an older version never
+moves `latest` backwards. A failure after index PUT is reported without rollback.
+
+Provision before the first run:
+
+- Existing `release-macos-primary` runner, pre-provisioned `~/.mhome/releases` and
+  `~/.mhome/pallas-cat`, Git SSH read access, Node 22+, npm, gh and AWS CLI.
+- `CARD_DEVKIT_SOURCE_READ_TOKEN`: read-only Actions access to the private source
+  repository, used to verify the successful v-tag check's actual source marker.
+  The public repository's default token cannot read private source runs.
+- `CARD_DEVKIT_PUBLISH_ROLE_ARN`: OIDC role with GetObject/PutObject only under
+  `card-devkit/*`, and ListBucket permission so missing keys return 404.
+- Public CDN delivery for that prefix, origin content types/cache headers, and
+  minimum TTL zero for the `no-cache` index.
+
+Re-run an unchanged source/version for an interrupted publication. A source
+change requires a new Pallas version. This workflow and its variables do not
+provision infrastructure or publish user-authored skins; those use the product's
+Card skin publication service through the standalone DevKit and MeowLink CLI.
+
+```sh
+node --test scripts/ci/card-devkit.test.cjs
+```
