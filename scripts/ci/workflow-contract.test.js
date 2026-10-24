@@ -18,7 +18,7 @@ function workflowFiles() {
 
 function productWorkflows() {
   return workflowFiles().filter(
-    (file) => !file.endsWith("/run-tagged.yaml") && !file.endsWith("/run-tagged-plugin.yaml")
+    (file) => !file.endsWith("/run-tagged.yaml") && !file.endsWith("/run-tagged-plugin.yaml") && !file.endsWith("/card-devkit.yaml")
   );
 }
 
@@ -32,7 +32,7 @@ test("workflows never clone and never use GitHub-hosted compile jobs", () => {
     assert.doesNotMatch(text, /GPR_TOKEN/, file);
     assert.doesNotMatch(text, /actions\/upload-artifact/, file);
     assert.doesNotMatch(text, /actions\/download-artifact/, file);
-    assert.doesNotMatch(text, /^\s+needs:/m, file);
+    if (!file.endsWith("/card-devkit.yaml")) assert.doesNotMatch(text, /^\s+needs:/m, file);
     assert.doesNotMatch(text, /plugin-build-ephemeral|builder_labels|PLUGIN_SOURCE_READ_TOKEN/, file);
   }
 });
@@ -317,4 +317,16 @@ test("Plugin builds and publishes on the existing runner with local artifact ver
   assert.match(read("scripts/ci/plugin-build.sh"), /quality-gate\.sh/);
   assert.match(read("scripts/ci/plugin-release.sh"), /verify-plugin-handoff\.js/);
   assert.match(read("scripts/ci/plugin-release.sh"), /--phase publish/);
+});
+
+test("Card DevKit promotes one index only after every platform exercises the public installer", () => {
+  const workflow = read(".github/workflows/card-devkit.yaml");
+  assert.match(workflow, /needs: \[prepare, accept\]/);
+  for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win-x64"]) assert.match(workflow, new RegExp(`platform: ${platform}`));
+  assert.match(workflow, /card-devkit-accept\.cjs/);
+  assert.match(workflow, /SOURCE_TAG#card-devkit-v/);
+  assert.doesNotMatch(workflow, /CARD_DEVKIT_SOURCE_READ_TOKEN/);
+  const source = read("scripts/ci/card-devkit.cjs");
+  assert.doesNotMatch(source, /gh.*run|validate_release_tag\.yml/);
+  assert.match(source, /gpgv/);
 });

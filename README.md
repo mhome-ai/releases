@@ -119,38 +119,77 @@ node --test scripts/ci/desktop-release.test.js scripts/ci/publish-desktop-update
 
 ## Card DevKit distribution
 
-`card-devkit.yaml` is an independent manual workflow. It consumes one validated
-Pallas `vX.Y.Z` plus its full commit, builds the standalone tarball, installs it
-outside the source tree and exercises authoring/type checks before publication.
-Pallas v-tag validation also checks the DevKit and records the exact source
-identity. Existing native/plugin `r` → `t` attempts and website deployments are
-separate release flows; this workflow never reads the website bucket.
+`card-devkit.yaml` independently publishes the tools behind `meow customize card`.
+It consumes an exact `card-devkit-vX.Y.Z` tag and full commit from Pallas, plus an
+already published Meow CLI version on all five supported platforms. DevKit and App
+versions are independent. The workflow validates the frozen DevKit directly; it
+does not search historical App workflow logs. It never deploys the App website.
 
-Artifacts live at `https://install.mhome.ai/card-devkit/<version>/` in the existing
-install distribution bucket. `devkit.json` records source tag/commit and each
-artifact's byte length/SHA-256. Metadata, declarations, schemas, author guide and
-tarball are immutable. An occupied version accepts only identical bytes.
-`card-devkit/index.json` is promoted using an ETag condition after every version
-file has passed public-download verification. Publishing an older version never
-moves `latest` backwards. A failure after index PUT is reported without rollback.
+The public root is `https://install.mhome.ai/card-devkit/`, in
+`mhome-install-distribution`, separate from the App website bucket. Each version
+has one portable, preinstalled JavaScript DevKit, five normalized Node/npm archives,
+public metadata/types/docs and a signed `devkit.json`. The manifest fixes the
+source/orchestrator commits, worker protocol, minimum CLI version, OS requirements,
+and every artifact URL, size and SHA-256. `acceptance.json` freezes the exact signed
+native Client artifacts used for acceptance. The dependency inventory and package
+license files travel with the release.
 
-Provision before the first run:
+`card-devkit-runtime.json` pins official Node/npm versions and upstream checksums.
+The publisher verifies Node's signed SHASUMS using the runner's pinned official
+release keyring, then checks each archive against the committed checksum before
+repacking. Dependency installation uses the committed npm lock with optional native
+dependencies, install scripts and bin links disabled. Archive generation rejects
+native addons and external links. The private Node/npm and compiler installation
+requires no npm registry access on the consumer machine.
 
-- Existing `release-macos-primary` runner, pre-provisioned `~/.mhome/releases` and
-  `~/.mhome/pallas-cat`, Git SSH read access, Node 22+, npm, gh and AWS CLI.
-- `CARD_DEVKIT_SOURCE_READ_TOKEN`: read-only Actions access to the private source
-  repository, used to verify the successful v-tag check's actual source marker.
-  The public repository's default token cannot read private source runs.
-- `CARD_DEVKIT_PUBLISH_ROLE_ARN`: OIDC role with GetObject/PutObject only under
-  `card-devkit/*`, and ListBucket permission so missing keys return 404.
-- Public CDN delivery for that prefix, origin content types/cache headers, and
-  minimum TTL zero for the `no-cache` index.
+The workflow has three phases:
 
-Re-run an unchanged source/version for an interrupted publication. A source
-change requires a new Pallas version. This workflow and its variables do not
-provision infrastructure or publish user-authored skins; those use the product's
-Card skin publication service through the standalone DevKit and MeowLink CLI.
+1. Freeze source and publisher, test the standalone package, prepare/sign, and
+   upload immutable candidate files without changing the public version index.
+2. On each supported platform, download the frozen released Meow CLI and exercise
+   `toolchain install`, `init`, `deps install`, metadata, build, verify, preview
+   hot reload, stop and uninstall in an isolated workdir with an empty system PATH.
+   The macOS x64 job uses the existing Apple Silicon runner with Rosetta; the
+   selected CLI and managed Node must actually report x64.
+3. After every platform passes, recheck the source tag and all publicly served
+   bytes, then conditionally update the single signed `index.json` using its ETag.
+
+A failed candidate never enters the index. Exact-version installation intentionally
+works before index promotion so the actual public installer can be tested. Candidate
+URLs remain immutable: identical retries reuse the original signed bytes; changed
+source, publisher, CLI inventory or artifacts require a new DevKit version. There
+is no overwrite, compatibility alias, platform-specific index or automatic upgrade.
+
+The signed JSON envelope stores exact payload bytes and their Minisign signature in
+one object. It uses the existing official Runtime distribution trust key, also pinned
+by the Meow CLI. Do not introduce an unsigned installer flag or an environment-based
+public-key override. Local unit fixtures use a separate test-only public key.
+
+Runner/publication prerequisites:
+
+- Existing `~/.mhome/releases` and `~/.mhome/pallas-cat` repositories; workflows fetch
+  exact objects into owned worktrees and never clone source repositories.
+- Existing macOS ARM64 + Rosetta, Linux ARM64/x64 and Windows x64 self-hosted runners.
+  All acceptance runners need Node to run the test recipe, Minisign and tar;
+  consumer subprocesses receive an empty PATH and use only downloaded tools.
+- Publisher: Node, npm, Python 3, Git, curl, AWS CLI, Minisign and `gpgv`.
+  `NODE_RELEASE_KEYRING` is the repository/org variable naming a maintained local
+  keyring of trusted official Node release keys. No keys are fetched implicitly.
+- `RUNTIME_CATALOG_PRIVATE_KEY_B64` is the existing official Runtime signing key.
+  `CARD_DEVKIT_PUBLISH_ROLE_ARN` grants OIDC PutObject/GetObject for `card-devkit/*`
+  and ListBucket for existence checks. Secrets never enter release files.
+- Public missing files must return 404; 403/auth/network errors are not treated as
+  an empty distribution. Public JSON/text/tar downloads need correct MIME and CORS.
+  Immutable version files use long-lived caching; the index uses `no-cache`.
+- Publish the new Meow CLI first, then dispatch this workflow. Meow source checks
+  and App release checks do not depend on this DevKit having been published.
+
+Source-level tests:
 
 ```sh
-node --test scripts/ci/card-devkit.test.cjs
+node --test scripts/ci/card-devkit.test.cjs scripts/ci/workflow-contract.test.js
 ```
+
+This workflow is independent of native product `r` → `t` tag coordination. DevKit
+source uses its own explicit immutable tag; the workflow's fixed GitHub SHA identifies
+its publisher. Do not turn an App deployment into the DevKit publication trigger.

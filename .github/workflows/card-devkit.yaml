@@ -2,12 +2,16 @@ name: Publish Card DevKit
 on:
   workflow_dispatch:
     inputs:
-      pallas_tag:
-        description: Exact validated Pallas vX.Y.Z source tag
+      devkit_tag:
+        description: Exact card-devkit-vX.Y.Z source tag
         required: true
         type: string
-      pallas_commit:
-        description: Full source commit matching that tag
+      source_commit:
+        description: Full Pallas source commit matching the DevKit tag
+        required: true
+        type: string
+      cli_version:
+        description: Already released meow CLI version on every supported platform
         required: true
         type: string
 concurrency:
@@ -17,68 +21,149 @@ permissions:
   contents: read
   id-token: write
 jobs:
-  publish:
+  prepare:
     runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
-    timeout-minutes: 30
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
     steps:
-      - name: Freeze orchestrator and product source
+      - name: Freeze publisher
         shell: bash
         env:
-          SOURCE_TAG: ${{ inputs.pallas_tag }}
-          SOURCE_COMMIT: ${{ inputs.pallas_commit }}
+          CARD_JOB: prepare
         run: |
           set -euo pipefail
-          export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
-          [[ "$SOURCE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]]
           root="${MHOME_ROOT:-$HOME/.mhome}"
-          work="$root/work/card-devkit-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          [ -e "$root/releases/.git" ] && [ -e "$root/pallas-cat/.git" ]
-          [ ! -e "$work" ]
-          mkdir -p "$work"
-          echo "WORK_ROOT=$work" >> "$GITHUB_ENV"
-          echo "MHOME_ROOT=$root" >> "$GITHUB_ENV"
-          git -C "$root/releases" fetch origin "$GITHUB_SHA"
-          git -C "$root/releases" worktree add --detach "$work/releases" "$GITHUB_SHA"
-          git -C "$root/pallas-cat" fetch --no-tags origin "refs/tags/$SOURCE_TAG"
-          actual="$(git -C "$root/pallas-cat" rev-parse 'FETCH_HEAD^{commit}')"
-          [ "$actual" = "$SOURCE_COMMIT" ]
-          git -C "$root/pallas-cat" worktree add --detach "$work/pallas-cat" "$actual"
-          echo "SOURCE_TAG=$SOURCE_TAG" >> "$GITHUB_ENV"
-          echo "SOURCE_COMMIT=$actual" >> "$GITHUB_ENV"
-      - name: Verify frozen source and build standalone package
+          git -C "$root/releases" fetch --no-tags origin "$GITHUB_SHA"
+          git -C "$root/releases" show "$GITHUB_SHA:scripts/ci/card-devkit-worktree.sh" | bash
+      - name: Check source, package and sign the fixed release
+        id: prepare
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.CARD_DEVKIT_SOURCE_READ_TOKEN }}
+          SOURCE_TAG: ${{ inputs.devkit_tag }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          CARD_ACCEPTANCE_CLI_VERSION: ${{ inputs.cli_version }}
+          NODE_RELEASE_KEYRING: ${{ vars.NODE_RELEASE_KEYRING }}
+          RUNTIME_CATALOG_PRIVATE_KEY_B64: ${{ secrets.RUNTIME_CATALOG_PRIVATE_KEY_B64 }}
         run: |
           set -euo pipefail
+          [[ "$SOURCE_TAG" =~ ^card-devkit-v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]]
           source "$WORK_ROOT/releases/scripts/ci/lib.sh"
-          require_cmd node npm gh aws
-          test -n "$GH_TOKEN"
+          require_cmd node npm python3 minisign gpgv aws
+          [ -e "$MHOME_ROOT/pallas-cat/.git" ]
+          git -C "$MHOME_ROOT/pallas-cat" fetch --no-tags origin "refs/tags/$SOURCE_TAG"
+          test "$(git -C "$MHOME_ROOT/pallas-cat" rev-parse 'FETCH_HEAD^{commit}')" = "$SOURCE_COMMIT"
+          git -C "$MHOME_ROOT/pallas-cat" worktree add --detach "$WORK_ROOT/pallas-cat" "$SOURCE_COMMIT"
           node "$WORK_ROOT/releases/scripts/ci/card-devkit.cjs" verify-source "$WORK_ROOT/pallas-cat"
           cd "$WORK_ROOT/pallas-cat"
-          npm ci --prefix src/ui-kit/cards/devkit --ignore-scripts --workspaces=false
+          npm ci --prefix src/ui-kit/cards/devkit --omit=optional --ignore-scripts --no-bin-links --workspaces=false
           node script/cards/verify-devkit.cjs "$WORK_ROOT/artifacts"
-      - name: Publish immutable files and promote index
+          node "$WORK_ROOT/releases/scripts/ci/card-devkit.cjs" prepare "$WORK_ROOT/artifacts"
+          echo "version=${SOURCE_TAG#card-devkit-v}" >> "$GITHUB_OUTPUT"
+      - name: Upload immutable candidate without updating the index
         shell: bash
         env:
           CARD_DEVKIT_PUBLISH_ROLE_ARN: ${{ vars.CARD_DEVKIT_PUBLISH_ROLE_ARN }}
+          SOURCE_TAG: ${{ inputs.devkit_tag }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
         run: |
           set -euo pipefail
           source "$WORK_ROOT/releases/scripts/ci/lib.sh"
           git -C "$WORK_ROOT/pallas-cat" fetch --no-tags origin "refs/tags/$SOURCE_TAG"
           test "$(git -C "$WORK_ROOT/pallas-cat" rev-parse 'FETCH_HEAD^{commit}')" = "$SOURCE_COMMIT"
           assume_aws_role "$CARD_DEVKIT_PUBLISH_ROLE_ARN"
-          node "$WORK_ROOT/releases/scripts/ci/card-devkit.cjs" publish "$WORK_ROOT/artifacts"
+          node "$WORK_ROOT/releases/scripts/ci/card-devkit.cjs" upload "$WORK_ROOT/artifacts"
       - name: Clean owned worktrees
         if: always() && env.WORK_ROOT != ''
         shell: bash
         run: |
           set -euo pipefail
           for name in pallas-cat releases; do
-            if [ -e "$WORK_ROOT/$name/.git" ]; then
-              git -C "$MHOME_ROOT/$name" worktree remove --force "$WORK_ROOT/$name"
-            fi
+            if [ -e "$WORK_ROOT/$name/.git" ]; then git -C "$MHOME_ROOT/$name" worktree remove --force "$WORK_ROOT/$name"; fi
           done
-          if [ -d "$WORK_ROOT/artifacts" ]; then rm -rf -- "$WORK_ROOT/artifacts"; fi
+          rm -rf -- "$WORK_ROOT/artifacts"
+          rmdir "$WORK_ROOT"
+  accept:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: darwin-arm64
+            runner: '["self-hosted","macOS","ARM64","release-macos-primary"]'
+          - platform: darwin-x64
+            runner: '["self-hosted","macOS","ARM64","release-macos-primary"]'
+          - platform: linux-arm64
+            runner: '["self-hosted","Linux","ARM64","release-linux-arm64"]'
+          - platform: linux-x64
+            runner: '["self-hosted","Linux","AMD64","release-linux-amd64"]'
+          - platform: win-x64
+            runner: '["self-hosted","Windows","X64"]'
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    timeout-minutes: 30
+    steps:
+      - name: Freeze acceptance recipe
+        shell: bash
+        env:
+          CARD_JOB: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          root="${MHOME_ROOT:-$HOME/.mhome}"
+          git -C "$root/releases" fetch --no-tags origin "$GITHUB_SHA"
+          git -C "$root/releases" show "$GITHUB_SHA:scripts/ci/card-devkit-worktree.sh" | bash
+      - name: Install, build and watch through the published meow CLI
+        shell: bash
+        env:
+          KIT_VERSION: ${{ needs.prepare.outputs.version }}
+          KIT_PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          node "$WORK_ROOT/releases/scripts/ci/card-devkit-accept.cjs" "$KIT_VERSION" "$KIT_PLATFORM" "$WORK_ROOT/acceptance"
+      - name: Clean owned acceptance files
+        if: always() && env.WORK_ROOT != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C "$MHOME_ROOT/releases" worktree remove --force "$WORK_ROOT/releases"
+          rm -rf -- "$WORK_ROOT/acceptance"
+          rmdir "$WORK_ROOT"
+  promote:
+    needs: [prepare, accept]
+    runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
+    timeout-minutes: 30
+    steps:
+      - name: Freeze promotion recipe
+        shell: bash
+        env:
+          CARD_JOB: promote
+        run: |
+          set -euo pipefail
+          root="${MHOME_ROOT:-$HOME/.mhome}"
+          git -C "$root/releases" fetch --no-tags origin "$GITHUB_SHA"
+          git -C "$root/releases" show "$GITHUB_SHA:scripts/ci/card-devkit-worktree.sh" | bash
+      - name: Promote after every supported platform passed
+        shell: bash
+        env:
+          KIT_VERSION: ${{ needs.prepare.outputs.version }}
+          CARD_DEVKIT_PUBLISH_ROLE_ARN: ${{ vars.CARD_DEVKIT_PUBLISH_ROLE_ARN }}
+          RUNTIME_CATALOG_PRIVATE_KEY_B64: ${{ secrets.RUNTIME_CATALOG_PRIVATE_KEY_B64 }}
+          SOURCE_TAG: ${{ inputs.devkit_tag }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          source "$WORK_ROOT/releases/scripts/ci/lib.sh"
+          git -C "$MHOME_ROOT/pallas-cat" fetch --no-tags origin "refs/tags/$SOURCE_TAG"
+          test "$(git -C "$MHOME_ROOT/pallas-cat" rev-parse 'FETCH_HEAD^{commit}')" = "$SOURCE_COMMIT"
+          mkdir "$WORK_ROOT/artifacts"
+          curl --fail --silent --show-error "https://install.mhome.ai/card-devkit/$KIT_VERSION/devkit.json" -o "$WORK_ROOT/artifacts/devkit.json"
+          assume_aws_role "$CARD_DEVKIT_PUBLISH_ROLE_ARN"
+          node "$WORK_ROOT/releases/scripts/ci/card-devkit.cjs" promote "$WORK_ROOT/artifacts"
+      - name: Clean owned promotion files
+        if: always() && env.WORK_ROOT != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C "$MHOME_ROOT/releases" worktree remove --force "$WORK_ROOT/releases"
+          rm -rf -- "$WORK_ROOT/artifacts"
           rmdir "$WORK_ROOT"
