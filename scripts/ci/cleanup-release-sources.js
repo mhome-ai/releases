@@ -37,6 +37,7 @@ function cleanupReleaseSources(sourceRoot, home = os.homedir()) {
   if (!fs.existsSync(resolved)) return;
 
   const names = [
+    "meow-matter-esp",
     "plugin",
     "baycat",
     "meowcore-rust",

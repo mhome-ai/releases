@@ -53,6 +53,12 @@ function attemptRelease(tag, prefix, body, channel, platform, extras) {
 
 function resolveProductTag(ref) {
   const tag = stripRef(ref);
+  const matter = /^mec5(\d{8}-\d{2})$/.exec(tag);
+  if (matter) {
+    return attemptRelease(tag, "mec5", matter[1], "matter", "esp32c5", {
+      withPallas: false, withMeowcore: false,
+    });
+  }
   const plugin = /^(pnmr|pnmx|pnlr|pnlx)(\d{8}-\d{2}|\d{14}|\d+\.\d+\.\d+)$/.exec(tag);
   if (plugin) {
     return attemptRelease(

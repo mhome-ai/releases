@@ -1,0 +1,5 @@
+self-hosted-runner:
+  labels:
+    - release-macos-primary
+    - release-linux-arm64
+    - release-linux-amd64

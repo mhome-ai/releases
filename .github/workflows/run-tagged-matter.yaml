@@ -1,0 +1,76 @@
+name: Build and publish verified Matter firmware
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      event_commit:
+        type: string
+        default: ""
+
+jobs:
+  release:
+    runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
+    timeout-minutes: 180
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Prepare the tagged release orchestrator
+        shell: bash
+        env:
+          EVENT_COMMIT: ${{ inputs.event_commit }}
+        run: |
+          set -euo pipefail
+          export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 GIT_TERMINAL_PROMPT=0
+          [[ "$RELEASE_TAG" =~ ^mec5[0-9]{8}-[0-9]{2}$ ]] || { echo "Invalid Matter release tag" >&2; exit 1; }
+          repo="$HOME/.mhome/releases"
+          test -e "$repo/.git" || { echo "Provision ~/.mhome/releases" >&2; exit 1; }
+          ref="refs/ci/matter-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'git -C "$repo" update-ref -d "$ref"' EXIT
+          git -C "$repo" fetch --no-tags --no-write-fetch-head origin "+refs/tags/${RELEASE_TAG}:$ref"
+          git -C "$repo" fetch --no-tags --no-write-fetch-head origin '+refs/heads/main:refs/remotes/origin/main'
+          [[ "$(git -C "$repo" cat-file -t "$ref")" = tag ]] || { echo "Expected an annotated release tag" >&2; exit 1; }
+          revision="$(git -C "$repo" rev-parse "${ref}^{commit}")"
+          git -C "$repo" merge-base --is-ancestor "$revision" origin/main
+          [[ -z "$EVENT_COMMIT" || "$revision" = "$EVENT_COMMIT" ]] || { echo "Release tag moved after trigger" >&2; exit 1; }
+          work_id="${GITHUB_RUN_ID}-matter-esp32c5-${GITHUB_RUN_ATTEMPT}"
+          work="$HOME/.mhome/work/$work_id"
+          test ! -e "$work" || { echo "Work directory already exists" >&2; exit 1; }
+          mkdir -p "$work"
+          echo "WORK_ROOT=$work" >> "$GITHUB_ENV"
+          echo "WORK_ID=$work_id" >> "$GITHUB_ENV"
+          echo "RELEASES_DIR=$work/releases" >> "$GITHUB_ENV"
+          echo "ORCHESTRATOR_TAG_OBJECT=$(git -C "$repo" rev-parse "$ref")" >> "$GITHUB_ENV"
+          git -C "$repo" worktree add --detach "$work/releases" "$revision"
+      - name: Resolve verified source and inspect existing release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node "$RELEASES_DIR/scripts/ci/matter-release.js" prepare
+      - name: Sign the embedded Node declaration
+        shell: bash
+        env:
+          PLUGIN_CATALOG_PRIVATE_KEY_B64: ${{ secrets.PLUGIN_CATALOG_PRIVATE_KEY_B64 }}
+        run: node "$RELEASES_DIR/scripts/ci/matter-release.js" sign
+      - name: Build and verify the firmware archive
+        shell: bash
+        run: node "$RELEASES_DIR/scripts/ci/matter-release.js" build
+      - name: Verify uploaded bytes and publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node "$RELEASES_DIR/scripts/ci/matter-release.js" publish
+      - name: Clean owned release worktrees
+        if: always() && env.WORK_ROOT != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -e "$WORK_ROOT/releases/.git" ]; then
+            node "$WORK_ROOT/releases/scripts/ci/cleanup-release-sources.js" "$WORK_ROOT"
+          elif [ -d "$WORK_ROOT" ]; then
+            rmdir "$WORK_ROOT"
+          fi

@@ -18,9 +18,20 @@ function workflowFiles() {
 
 function productWorkflows() {
   return workflowFiles().filter(
-    (file) => !file.endsWith("/run-tagged.yaml") && !file.endsWith("/run-tagged-plugin.yaml") && !file.endsWith("/card-devkit.yaml")
+    (file) => !/\/run-tagged(?:-plugin|-matter)?\.yaml$/.test(file) && !file.endsWith("/card-devkit.yaml")
   );
 }
+
+test("Matter builds receive no publisher key or GitHub write credential", () => {
+  const text = read(".github/workflows/run-tagged-matter.yaml");
+  const build = text.split("      - name: Build and verify the firmware archive")[1].split("      - name:")[0];
+  assert.doesNotMatch(build, /secrets\.|GH_TOKEN|PRIVATE_KEY|TEST_PUBLIC_KEY/);
+  const signing = text.split("      - name: Sign the embedded Node declaration")[1].split("      - name:")[0];
+  assert.match(signing, /secrets\.PLUGIN_CATALOG_PRIVATE_KEY_B64/);
+  assert.doesNotMatch(signing, /GH_TOKEN/);
+  assert.match(text, /ORCHESTRATOR_TAG_OBJECT/);
+  assert.match(read("scripts/ci/matter-release.js"), /assertSnapshot\(state\.orchestratorDirectory/);
+});
 
 test("workflows never clone and never use GitHub-hosted compile jobs", () => {
   for (const file of workflowFiles()) {
@@ -58,8 +69,8 @@ test("each product workflow is one job that calls run-tagged.yaml", () => {
   assert.ok(files.length >= 8, `expected split product workflows, got ${files.join(", ")}`);
   for (const file of files) {
     const text = read(file);
-    assert.match(text, /uses: \.\/\.github\/workflows\/run-tagged(?:-plugin)?\.yaml/, file);
-    assert.match(text, /^\s+packages: write$/m, file);
+    assert.match(text, /uses: \.\/\.github\/workflows\/run-tagged(?:-plugin|-matter)?\.yaml/, file);
+    if (!file.endsWith("/matter-esp32c5.yaml")) assert.match(text, /^\s+packages: write$/m, file);
     assert.doesNotMatch(text, /^\s+if:/m, file);
     assert.doesNotMatch(text, /^\s+environment:/m, file);
     assert.doesNotMatch(text, /worktree add --detach/, file);

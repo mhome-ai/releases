@@ -4,6 +4,11 @@ const os = require("node:os");
 const path = require("node:path");
 
 const PRODUCT_REPOS = {
+  "meow-matter-esp": {
+    name: "meow-matter-esp",
+    repository: "mhome-ai/meow-matter-esp",
+    defaultBranch: "main",
+  },
   plugin: {
     name: "plugin",
     repository: "mhome-ai/plugin",

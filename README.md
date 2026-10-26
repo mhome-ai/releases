@@ -61,6 +61,54 @@ Agent is also a source input. Provision `~/.mhome/agent` from the private `mhome
 
 `scripts/ci/source-worktree.cjs` is used by Foundation, Agent, Agent cloud and MeowCore CI. Runners pre-provision each repository under `~/.mhome/` with their existing GitHub read access. The helper fetches the event commit, creates a detached worktree under a unique `~/.mhome/work/<repo>-<run>-<job>-<attempt>/`, and prepares the exact Agent pin for consumers. It never clones or changes canonical checkout branches, refuses existing work directories, and rolls back partial preparation. Cleanup removes only recorded task-owned worktrees. Workflows load the helper from the Releases main commit they just fetched; deliver this helper before dependent workflow updates.
 
+## Matter ESP32-C5 firmware
+
+`matter-esp32c5.yaml` publishes the 32 MB flash / 8 MB PSRAM `psram_ble` board
+profile. The firmware repository owns source checks: annotated `rYYYYMMDD-NN`
+on `meow-matter-esp/main` produces annotated `tYYYYMMDD-NN` only after manifest
+tests, host sanitizer tests and a complete test-signed firmware build pass.
+The product version lives in that source's `version.txt`, not in the date tag.
+
+Create annotated `mec5YYYYMMDD-NN` on this repository's `main` to release the
+matching `t`. Manual dispatch accepts that existing release tag and uses its
+orchestrator commit too. The workflow refuses absent/lightweight/moved tags and
+source outside `origin/main`; it never falls back to `r` or the latest source.
+Source and orchestrator use sibling worktrees under `~/.mhome/work/<run>/`.
+
+The existing `release-macos-primary` runner requires pre-provisioned
+`~/.mhome/{releases,meow-matter-esp}`, read access to both repositories, Node 20+,
+Python 3, GitHub CLI, minisign and ESP-IDF 5.5.5 installed at
+`$HOME/esp/esp-idf-v5.5.5`. Source-check jobs also need Homebrew mbedTLS. Configure
+the existing `PLUGIN_CATALOG_PRIVATE_KEY_B64` Secret for this repository; its key
+must match the publisher public key already trusted by the firmware and MeowCore.
+No key rotation is part of this workflow. Signing gets the private key in a
+temporary file, removes it before compilation, and build receives neither the
+signing Secret nor GitHub write credentials. These steps share the existing
+trusted self-hosted runner, not a physical security boundary.
+
+The release generates the signed Node declaration **before** compiling and
+embeds it in the application. Its archive contains the application, bootloader,
+partition table, initial OTA data, flash offsets, signed declaration and a
+`release.json` record with source/orchestrator identities and file SHA-256 hashes.
+Packaging checks the actual application descriptor, embedded declaration, SDK
+version and board layout. The embedded signature authenticates the declaration;
+it is not an ESP Secure Boot signature over the complete firmware image.
+
+A draft becomes public only after its downloaded archive passes verification.
+Existing complete archives are downloaded and verified before reusing their
+original bytes; retries do not rebuild or overwrite public firmware. A firmware
+version already used by another attempt requires a new `version.txt`. An incomplete
+GitHub asset upload fails with an explicit diagnostic for draft inspection rather
+than overwriting ambiguous data. Firmware releases use `--latest=false` and do
+not affect desktop update feeds. The workflow does not flash devices, erase NVS,
+configure OTA delivery or claim hardware acceptance.
+
+Offline checks for this orchestration:
+
+```sh
+node --test scripts/ci/matter-release.test.js scripts/ci/workflow-contract.test.js
+```
+
 ## Plugin 独立发布
 
 `plugin` 从 `~/.mhome/plugin` 的 annotated `tYYYYMMDD-NN` 取源码，使用 `pnmr/pnmx/pnlr/pnlx` 发布 Native 包。这个 `t` 由 Plugin 的 `r` 检查通过后创建。平台 Native 继续从 Baycat 构建。Plugin workflow 不编译 Baycat 或 MeowCore 源码。
