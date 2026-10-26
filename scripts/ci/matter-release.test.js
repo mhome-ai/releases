@@ -4,7 +4,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const crypto = require("node:crypto");
-const { execFileSync } = require("node:child_process");
+const { execFile, execFileSync } = require("node:child_process");
+const http = require("node:http");
+const { once } = require("node:events");
+const { promisify } = require("node:util");
 const test = require("node:test");
 const { prepareMatterSources, assertSnapshot, git } = require("./prepare-matter-sources");
 const { cleanupReleaseSources } = require("./cleanup-release-sources");
@@ -38,6 +41,42 @@ function repository(root, name, tag, files = {}, annotated = true) {
   git(seed, "remote", "add", "origin", origin);
   return { directory: seed, origin, revision: git(seed, "rev-parse", "HEAD"), tag, tagObject: git(seed, "rev-parse", tag) };
 }
+
+test("real GitHub CLI reads every release page and handles an empty result", async t => {
+  const root = temporary(t);
+  const realGh = execFileSync("which", ["gh"], { encoding: "utf8" }).trim();
+  const asset = { name: "meowlink-matter-esp32c5-1.2.3.tar.gz", state: "uploaded", digest: "sha256:" + "a".repeat(64) };
+  let pages = [[{ tag_name: "desktop", draft: false, assets: [] },
+    { tag_name: "mec520261026-01", draft: false, assets: [] }],
+    [{ tag_name: "mec520261026-02", draft: true, assets: [asset] }]];
+  const server = http.createServer((request, response) => {
+    const index = Number(new URL(request.url, "http://localhost").searchParams.get("page") || 1) - 1;
+    response.setHeader("Content-Type", "application/json");
+    if (index + 1 < pages.length) response.setHeader("Link", `<http://127.0.0.1:${server.address().port}/releases?page=${index + 2}>; rel="next"`);
+    response.end(JSON.stringify(pages[index]));
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  // Only redirect the endpoint. The installed gh parses flags, follows Link
+  // headers and executes the actual jq query, without contacting GitHub.
+  const wrapper = write(root, "bin/gh", `#!${process.execPath}\n` + `
+const { spawnSync } = require('node:child_process');
+const args = process.argv.slice(2).map(value => value.startsWith('repos/') ? ${JSON.stringify(`http://127.0.0.1:${server.address().port}/releases`)} : value);
+const result = spawnSync(${JSON.stringify(realGh)}, args, {stdio: 'inherit'});
+process.exit(result.status ?? 1);
+`);
+  fs.chmodSync(wrapper, 0o755);
+  const env = { ...process.env, PATH: `${path.dirname(wrapper)}:${process.env.PATH}`,
+    GH_TOKEN: "fixture-token", GITHUB_TOKEN: "", GH_CONFIG_DIR: path.join(root, "gh-config") };
+  const read = async () => JSON.parse((await promisify(execFile)(process.execPath, ["-e",
+    `console.log(JSON.stringify(require(${JSON.stringify(path.join(__dirname, "matter-release.js"))}).listReleases('fixture/releases')))`], { env })).stdout);
+  const releases = await read();
+  assert.deepEqual(releases, [pages[0][1], pages[1][0]]);
+  assert.throws(() => selectRelease(releases, "mec520261026-03", asset.name), /version already belongs/);
+  pages = [[]];
+  assert.deepEqual(await read(), []);
+});
 
 test("Matter product tag selects only the matching verified source", () => {
   const tag = resolveProductTag("mec520261026-01");
@@ -126,7 +165,10 @@ const fs = require('node:fs'), path = require('node:path');
 const root = process.env.MATTER_TEST_ROOT, args = process.argv.slice(2), db = path.join(root, 'gh-state.json');
 const releases = JSON.parse(fs.readFileSync(db));
 fs.appendFileSync(path.join(root, 'gh-calls.jsonl'), JSON.stringify(args) + '\\n');
-if (args[0] === 'api') console.log(JSON.stringify([releases]));
+if (args[0] === 'api') {
+  if (args.includes('--slurp') && args.includes('--jq')) throw Error('gh rejects slurp with jq');
+  for (const release of releases) console.log(JSON.stringify(release));
+}
 else if (args[1] === 'create') releases.push({tag_name: args[2], draft: true, assets: []});
 else if (args[1] === 'upload') {
   if (args.includes('--clobber')) throw Error('overwrite forbidden');

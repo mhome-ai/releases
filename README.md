@@ -91,7 +91,9 @@ embeds it in the application. Its archive contains the application, bootloader,
 partition table, initial OTA data, flash offsets, signed declaration and a
 `release.json` record with source/orchestrator identities and file SHA-256 hashes.
 Packaging checks the actual application descriptor, embedded declaration, SDK
-version and board layout. The embedded signature authenticates the declaration;
+version, board layout and production Cloud identity endpoint. Test compilation
+uses the same `psram_ble` production endpoint; its disposable signer still cannot
+join production Core. The embedded signature authenticates the declaration;
 it is not an ESP Secure Boot signature over the complete firmware image.
 
 A draft becomes public only after its downloaded archive passes verification.

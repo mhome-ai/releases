@@ -43,9 +43,12 @@ function context() {
 }
 
 function listReleases(repo) {
-  const query = '[.[][] | select(.tag_name | startswith("mec5")) | {tag_name, draft, assets: [.assets[] | {name, state, digest}]}]';
-  return JSON.parse(run("gh", ["api", "--paginate", "--slurp", `repos/${repo}/releases?per_page=100`, "--jq", query],
-    { maxBuffer: 16 * 1024 * 1024 })).flat();
+  // gh applies --jq to each page; --slurp cannot be combined with --jq.
+  // Emit one compact object per line so pages (including empty ones) compose.
+  const query = '.[] | select(.tag_name | startswith("mec5")) | {tag_name, draft, assets: [.assets[] | {name, state, digest}]}';
+  const output = run("gh", ["api", "--paginate", `repos/${repo}/releases?per_page=100`, "--jq", query],
+    { maxBuffer: 16 * 1024 * 1024 });
+  return output.split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
 }
 
 function assertSource(state) {
@@ -77,7 +80,7 @@ function prepare(ctx) {
   if (product.channel !== "matter") throw new Error("Expected a mec5 Matter release tag");
   const source = prepareMatterSources({ tag: product.sourceTag, workId: process.env.WORK_ID });
   const version = fs.readFileSync(path.join(source.directory, "version.txt"), "utf8").trim();
-  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version) || version.length > 32) throw new Error("Invalid firmware version.txt");
+  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version) || version.length > 31) throw new Error("Invalid firmware version.txt (maximum 31 characters)");
   const orchestratorDirectory = process.env.RELEASES_DIR;
   const state = { source, version, tag: product.releaseTag, orchestratorDirectory,
     orchestrator: git(orchestratorDirectory, "rev-parse", "HEAD"),
@@ -169,7 +172,7 @@ function main(action) {
   if (action === "publish") return publish(ctx, state);
   throw new Error("Expected prepare, sign, build or publish");
 }
-module.exports = { selectRelease, archiveAsset, packageArgs };
+module.exports = { selectRelease, archiveAsset, packageArgs, listReleases };
 if (require.main === module) {
   try { main(process.argv[2]); } catch (error) { console.error(error.message); process.exitCode = 1; }
 }
