@@ -29,7 +29,7 @@ function setup(t) {
   return { root, repo, args };
 }
 
-for (const name of ["foundation", "plugin"]) test(`${name}: uses event SHA while preserving newer canonical main and cleans generated files`, (t) => {
+for (const name of ["foundation", "integration"]) test(`${name}: uses event SHA while preserving newer canonical main and cleans generated files`, (t) => {
   const { root, repo, args } = setup(t);
   const source = repo(name, { "source.txt": "pinned" });
   fs.writeFileSync(path.join(source.origin, "later.txt"), "later");

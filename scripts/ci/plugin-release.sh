@@ -4,7 +4,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib.sh"
 read_product_tag "${RELEASE_TAG:?RELEASE_TAG is required}"
 [ "$PRODUCT_CHANNEL" = plugin ] || fail "Expected a Plugin Native release tag"
-require_mhome_clone plugin
+require_mhome_clone integration
 require_mhome_clone releases
 require_cmd git node npm gh curl minisign python3 aws
 repo="${GITHUB_REPOSITORY:-mhome-ai/releases}"
@@ -75,7 +75,7 @@ else
   node scripts/release/native/package.js --target "$PRODUCT_PLATFORM" --output "$assets_dir" --mode release --phase publish ${previous_args[@]+"${previous_args[@]}"}
   node scripts/release/generate-catalog.js \
     --platform "$PRODUCT_PLATFORM" --version "$PRODUCT_VERSION" --tag "$PRODUCT_RELEASE_TAG" \
-    --repository "$repo" --source-repository mhome-ai/plugin --source-revision "$PLUGIN_REVISION" \
+    --repository "$repo" --source-repository mhome-ai/integration --source-revision "$PLUGIN_REVISION" \
     --orchestrator-revision "$(git -C "$RELEASES_DIR" rev-parse HEAD)" \
     --workflow-run-url "${GITHUB_SERVER_URL:-https://github.com}/${repo}/actions/runs/${GITHUB_RUN_ID:?}" \
     --assets-dir "$assets_dir" --runtime-alternatives true --output "$catalog_dir/catalog.json" \

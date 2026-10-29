@@ -38,7 +38,7 @@ function cleanupReleaseSources(sourceRoot, home = os.homedir()) {
 
   const names = [
     "meow-matter-esp",
-    "plugin",
+    "integration",
     "baycat",
     "meowcore-rust",
     "agent",

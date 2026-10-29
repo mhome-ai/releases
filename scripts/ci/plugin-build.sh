@@ -14,9 +14,9 @@ handoff="${PLUGIN_HANDOFF:?PLUGIN_HANDOFF is required}"
 cleanup() {
   # Keep the orchestrator and handoff for the next step on the same runner.
   # The workflow owns final cleanup, including after build failures.
-  local directory="$WORK_ROOT/plugin"
+  local directory="$WORK_ROOT/integration"
   if [ -e "$directory/.git" ]; then
-    git -C "$MHOME/plugin" worktree remove --force "$directory"
+    git -C "$MHOME/integration" worktree remove --force "$directory"
   fi
 }
 trap cleanup EXIT

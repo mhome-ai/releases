@@ -9,9 +9,9 @@ const PRODUCT_REPOS = {
     repository: "mhome-ai/meow-matter-esp",
     defaultBranch: "main",
   },
-  plugin: {
-    name: "plugin",
-    repository: "mhome-ai/plugin",
+  integration: {
+    name: "integration",
+    repository: "mhome-ai/integration",
     defaultBranch: "main",
   },
   baycat: {

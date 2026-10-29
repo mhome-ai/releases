@@ -7,7 +7,7 @@ repository. This git tree is the release orchestrator only.
 
 1. Attempt tags are `rYYYYMMDD-NN` in UTC, for example `r20261001-01`.
    Push that annotated tag on Baycat when this attempt publishes native or desktop,
-   or on Plugin when it publishes plugins. The tag points at one commit already
+   or on Integration when it publishes plugins. The tag points at one commit already
    on the default branch. CI checks that commit. After the checks pass, CI creates
    annotated `t20261001-01` at the same commit. A failed, cancelled, or unfinished
    attempt keeps `r` and does not create `t`. Tags are not moved: rerun the same
@@ -40,7 +40,7 @@ name and `https://install.mhome.ai` stay in `scripts/ci/lib.sh`. Workflows
 do not use GitHub Environments.
 
 Workflows never `git clone` and never `actions/checkout` product sources.
-Runners must already have `~/.mhome/{baycat,meowcore-rust,pallas-cat,releases,harness}`
+Runners must already have `~/.mhome/{baycat,integration,meowcore-rust,pallas-cat,releases,harness}`
 and SSH that can fetch GitHub. Pack scripts stay in the product trees.
 
 ## Runners
@@ -113,11 +113,11 @@ node --test scripts/ci/matter-release.test.js scripts/ci/workflow-contract.test.
 
 ## Plugin 独立发布
 
-`plugin` 从 `~/.mhome/plugin` 的 annotated `tYYYYMMDD-NN` 取源码，使用 `pnmr/pnmx/pnlr/pnlx` 发布 Native 包。这个 `t` 由 Plugin 的 `r` 检查通过后创建。平台 Native 继续从 Baycat 构建。Plugin workflow 不编译 Baycat 或 MeowCore 源码。
+`plugin` 从 `~/.mhome/integration` 的 annotated `tYYYYMMDD-NN` 取源码，使用 `pnmr/pnmx/pnlr/pnlx` 发布 Native 包。这个 `t` 由 Integration 的 Plugin 源码 `r` 检查通过后创建。平台 Native 继续从 Baycat 构建。Plugin workflow 不编译 Baycat 或 MeowCore 源码。
 
-首次运行需要准备官方 plugin 仓库、runner 只读凭据、`PLUGIN_PUBLISH_ROLE_ARN` 和 `PLUGIN_CATALOG_PRIVATE_KEY_B64`；Plugin 使用独立签名密钥，公钥已同步安装器，secret 和 S3 写权限独立。Plugin role 只写 `plugins/*/releases/*` 与 `plugins/stable/*`。版本清单地址为 `https://install.mhome.ai/plugins/<id>/releases/<version>/<platform>/manifest.bundle.json`，每个 Plugin 的版本独立保留。先上传不可变版本清单，再推广 `https://install.mhome.ai/plugins/stable/<platform>/catalog.bundle.json` 最新索引；不归档 S3 聚合历史 catalog。同版本重试复用原始签名文件，不覆盖旧版内容。先发布平台 Native，再发布 Plugin Native。Linux Node 装进 Baycat 的统一 Host 容器，不再单独发布家电镜像。
+首次运行需要准备官方 integration 仓库、runner 只读凭据、`PLUGIN_PUBLISH_ROLE_ARN` 和 `PLUGIN_CATALOG_PRIVATE_KEY_B64`；Plugin 使用独立签名密钥，公钥已同步安装器，secret 和 S3 写权限独立。Plugin role 只写 `plugins/*/releases/*` 与 `plugins/stable/*`。版本清单地址为 `https://install.mhome.ai/plugins/<id>/releases/<version>/<platform>/manifest.bundle.json`，每个 Plugin 的版本独立保留。先上传不可变版本清单，再推广 `https://install.mhome.ai/plugins/stable/<platform>/catalog.bundle.json` 最新索引；不归档 S3 聚合历史 catalog。同版本重试复用原始签名文件，不覆盖旧版内容。先发布平台 Native，再发布 Plugin Native。Linux Node 装进 Baycat 的统一 Host 容器，不再单独发布家电镜像。
 
-首次目录初始化须用对应 workflow 手动输入 tag 和 `initialize_catalog=true`。完整规则见 plugin 仓库 `release/README.md`。Catalog 保留插件源码与编排 commit；重试复用已经上传的完整签名快照。stable 的 `catalog.bundle.json` 最后原子写入，消费者不会读取中途更新的 JSON/签名对。同一 Linux 构建机或 Mac 签名环境仍使用公共资源锁。
+首次目录初始化须用对应 workflow 手动输入 tag 和 `initialize_catalog=true`。完整规则见 integration 仓库 `release/README.md`。Catalog 保留插件源码与编排 commit；重试复用已经上传的完整签名快照。stable 的 `catalog.bundle.json` 最后原子写入，消费者不会读取中途更新的 JSON/签名对。同一 Linux 构建机或 Mac 签名环境仍使用公共资源锁。
 
 Plugin 使用 `run-tagged-plugin.yaml` 的单个作业，复用平台已有的自托管 runner：macOS 在 alimao 的 `release-macos-primary`，Linux 在现有 `release-linux-arm64` / `release-linux-amd64`。同一 runner 先运行质量检查并构建，再核对本地产物的源码、编排 commit、tag 和摘要，最后签名上传。不经过 GitHub artifact 中转，也不要求额外机器。构建步骤不注入签名 secret；同机运行属于可信源码发布流程，不宣称凭据或物理隔离。
 

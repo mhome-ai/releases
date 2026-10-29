@@ -78,7 +78,7 @@ Test cleanup only in disposable fixtures:
 python3 -B runners/test_cleanup_job_target.py
 ```
 
-Put a read key for `baycat`, `plugin`, `meowcore-rust`, `agent`, `agent-cloud`,
+Put a read key for `baycat`, `integration`, `meowcore-rust`, `agent`, `agent-cloud`,
 `foundation`, and `releases` at
 `id_ed25519` in that volume **before** the first start:
 

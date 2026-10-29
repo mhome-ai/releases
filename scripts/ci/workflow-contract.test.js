@@ -263,6 +263,8 @@ test("linux runner entrypoints clone ~/.mhome sources at start", () => {
   const script = read("runners/ensure-mhome-sources.sh");
   assert.match(script, /git clone/);
   assert.match(script, /baycat/);
+  assert.match(script, /^clone_if_missing integration$/m);
+  assert.doesNotMatch(script, /^clone_if_missing plugin$/m);
   assert.match(script, /meowcore-rust/);
   assert.match(script, /releases/);
   assert.doesNotMatch(script, /pallas-cat/);

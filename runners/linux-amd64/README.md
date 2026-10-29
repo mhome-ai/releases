@@ -46,7 +46,7 @@ which repositories can use the runner, pick **All repositories**. Tokens expire
 in about an hour and are only needed the first time the Docker volume has no
 `.runner` file.
 
-Put a GitHub SSH read key for `baycat`, `plugin`, `meowcore-rust`, `agent`,
+Put a GitHub SSH read key for `baycat`, `integration`, `meowcore-rust`, `agent`,
 `agent-cloud`, `foundation`, and `releases` in
 the `runner-ssh` volume (`id_ed25519`) before the first start:
 

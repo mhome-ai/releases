@@ -23,11 +23,11 @@ function preparePluginSources({ version, tag, workId, home = os.homedir() }) {
   if (!/^t\d{8}-\d{2}$/.test(tag || "")) {
     throw new Error("Plugin source tag must be tYYYYMMDD-NN");
   }
-  const clone = canonicalClonePath("plugin", home);
-  requireExistingClone(PRODUCT_REPOS.plugin, clone);
+  const clone = canonicalClonePath("integration", home);
+  requireExistingClone(PRODUCT_REPOS.integration, clone);
   const revision = fetchTag(clone, tag);
   require("./verify-plugin-source").verifyPluginSource(clone, revision);
-  const directory = path.join(releaseWorkRoot(workId, home), "plugin");
+  const directory = path.join(releaseWorkRoot(workId, home), "integration");
   if (fs.existsSync(directory))
     throw new Error(`Refusing existing plugin worktree: ${directory}`);
   fs.mkdirSync(path.dirname(directory), { recursive: true });

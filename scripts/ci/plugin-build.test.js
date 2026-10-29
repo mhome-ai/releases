@@ -35,7 +35,7 @@ for (const failQuality of [false, true]) test(`build cleanup preserves the publi
   git(source, 'commit', '-m', 'source');
   git(source, 'tag', '-a', 't20261001-01', '-m', 'attempt');
   fs.mkdirSync(mhome, { recursive: true });
-  git(temp, 'clone', source, path.join(mhome, 'plugin'));
+  git(temp, 'clone', source, path.join(mhome, 'integration'));
   const pluginCommit = git(source, 'rev-parse', 'HEAD');
   const orchestrator = path.join(work, 'releases');
   init(orchestrator);
@@ -53,8 +53,8 @@ for (const failQuality of [false, true]) test(`build cleanup preserves the publi
   for (const key of ['PLUGIN_CATALOG_PRIVATE_KEY_B64', 'APPLE_CSC_LINK', 'APPLE_CSC_KEY_PASSWORD', 'AWS_SECRET_ACCESS_KEY']) delete env[key];
   const result = spawnSync('bash', [path.join(__dirname, 'plugin-build.sh')], { env, encoding: 'utf8' });
   assert.equal(result.status, failQuality ? 1 : 0, result.stderr + result.stdout);
-  assert.equal(fs.existsSync(path.join(work, 'plugin')), false);
+  assert.equal(fs.existsSync(path.join(work, 'integration')), false);
   assert.equal(fs.existsSync(path.join(orchestrator, '.git')), true);
-  assert.equal(git(path.join(mhome, 'plugin'), 'worktree', 'list', '--porcelain').match(/^worktree /gm).length, 1);
+  assert.equal(git(path.join(mhome, 'integration'), 'worktree', 'list', '--porcelain').match(/^worktree /gm).length, 1);
   if (!failQuality) await verifyHandoff(handoff, pluginCommit, git(orchestrator, 'rev-parse', 'HEAD'), 'pnmr20261001-01');
 });
