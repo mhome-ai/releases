@@ -23,6 +23,8 @@ function setup(t) {
     git(origin, "add", "."); git(origin, "commit", "-qm", "initial");
     const revision = git(origin, "rev-parse", "HEAD");
     git(base, "clone", "-q", origin, path.join(root, name));
+    git(path.join(root, name), "config", "user.name", "Fixture");
+    git(path.join(root, name), "config", "user.email", "test@example.invalid");
     return { origin, revision, clone: path.join(root, name) };
   }
   const args = { root, reference: "refs/heads/main", run: "123", job: "test", attempt: "1" };
