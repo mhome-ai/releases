@@ -57,7 +57,7 @@ jobs:
           git -C "$MHOME_ROOT/pallas-cat" worktree add --detach "$WORK_ROOT/pallas-cat" "$SOURCE_COMMIT"
           node "$WORK_ROOT/releases/scripts/ci/card-devkit.cjs" verify-source "$WORK_ROOT/pallas-cat"
           cd "$WORK_ROOT/pallas-cat"
-          npm ci --prefix src/ui-kit/cards/devkit --omit=optional --ignore-scripts --no-bin-links --workspaces=false
+          npm ci --prefix tools/card-devkit --omit=optional --ignore-scripts --no-bin-links --workspaces=false
           node script/cards/verify-devkit.cjs "$WORK_ROOT/artifacts"
           node "$WORK_ROOT/releases/scripts/ci/card-devkit.cjs" prepare "$WORK_ROOT/artifacts"
           echo "version=${SOURCE_TAG#card-devkit-v}" >> "$GITHUB_OUTPUT"

@@ -44,8 +44,7 @@ async function accept(version, platform, directory) {
     (await fs.stat(binary)).isFile(),
     "Native Client package must contain its standard CLI entrypoint"
   );
-  const home = path.join(directory, "home"),
-    project = path.join(directory, "skin");
+  const home = path.join(directory, "home");
   const env = { ...process.env, PATH: "" };
   delete env.NODE_PATH;
   delete env.NODE_OPTIONS;
@@ -88,100 +87,106 @@ async function accept(version, platform, directory) {
     )
   );
   assert.equal(npm.version, runtime.npmVersion);
-  call("init", project, "--devkit", version);
-  call("deps", "install", project);
-  const patterns = call("patterns", "--project", project);
-  assert(patterns.patterns.length > 0);
-  const out = path.join(directory, "dist");
-  const built = call("build", project, out);
-  assert.deepEqual(call("verify", out), built);
-  const info = JSON.parse(await fs.readFile(path.join(out, "build-info.json")));
-  assert.equal(info.devkitVersion, version);
-  assert.equal(info.devkitManifestSha256, sha(manifestBytes));
-  const renderer = built.renderers[0];
-  const preview = spawn(
-    binary,
-    [
-      "--home",
-      home,
-      "customize",
-      "card",
-      "preview",
-      "start",
-      project,
-      "--pattern",
-      renderer.supportedPatterns[0].patternId,
-      "--renderer",
-      renderer.id,
-    ],
-    {
-      env,
-      detached: process.platform !== "win32",
-      stdio: ["ignore", "pipe", "inherit"],
-    }
-  );
-  let stdout = "";
-  try {
-    const url = await new Promise((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error("Preview startup timed out")),
-        60000
-      );
-      preview.once("error", (error) => {
-        clearTimeout(timer);
-        reject(error);
-      });
-      preview.once("exit", (code) => {
-        clearTimeout(timer);
-        reject(new Error(`Preview exited: ${code}`));
-      });
-      preview.stdout.on("data", (chunk) => {
-        stdout += chunk;
-        if (stdout.includes("\n")) {
+  for (const baseUi of ["default", "default-pod"]) {
+    const project = path.join(directory, `skin-${baseUi}`);
+    call("init", project, "--devkit", version, "--base-ui", baseUi);
+    call("deps", "install", project);
+    const patterns = call("patterns", "--project", project);
+    assert(patterns.patterns.length > 0);
+    const out = path.join(directory, `dist-${baseUi}`);
+    const built = call("build", project, out);
+    assert.deepEqual(call("verify", out), built);
+    assert.equal(built.baseUi, baseUi);
+    const info = JSON.parse(
+      await fs.readFile(path.join(out, "build-info.json"))
+    );
+    assert.equal(info.devkitVersion, version);
+    assert.equal(info.devkitManifestSha256, sha(manifestBytes));
+    const renderer = built.renderers[0];
+    const preview = spawn(
+      binary,
+      [
+        "--home",
+        home,
+        "customize",
+        "card",
+        "preview",
+        "start",
+        project,
+        "--pattern",
+        renderer.supportedPatterns[0].patternId,
+        "--renderer",
+        renderer.id,
+      ],
+      {
+        env,
+        detached: process.platform !== "win32",
+        stdio: ["ignore", "pipe", "inherit"],
+      }
+    );
+    let stdout = "";
+    try {
+      const url = await new Promise((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error("Preview startup timed out")),
+          60000
+        );
+        preview.once("error", (error) => {
           clearTimeout(timer);
-          try {
-            resolve(JSON.parse(stdout.split("\n")[0]).url);
-          } catch (error) {
-            reject(error);
-          }
-        }
-      });
-    });
-    const before = call("preview", "status", "--url", url);
-    assert.equal(before.status, "ready");
-    await fs.appendFile(
-      path.join(project, "skin.jsx"),
-      "\n// acceptance save\n"
-    );
-    let updated;
-    for (let attempt = 0; attempt < 100; attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      updated = call("preview", "status", "--url", url);
-      if (updated.status === "ready" && updated.build.id !== before.build.id)
-        break;
-    }
-    assert.equal(updated.status, "ready");
-    assert.notEqual(
-      updated.build.id,
-      before.build.id,
-      "File watcher must publish a fresh build"
-    );
-    const exited = once(preview, "exit", {
-      signal: AbortSignal.timeout(15000),
-    });
-    call("preview", "stop", "--url", url);
-    await exited;
-  } finally {
-    if (preview.exitCode === null) {
-      if (process.platform === "win32")
-        spawnSync("taskkill", ["/PID", String(preview.pid), "/T", "/F"], {
-          stdio: "ignore",
+          reject(error);
         });
-      else {
-        try {
-          process.kill(-preview.pid, "SIGTERM");
-        } catch (error) {
-          if (error.code !== "ESRCH") throw error;
+        preview.once("exit", (code) => {
+          clearTimeout(timer);
+          reject(new Error(`Preview exited: ${code}`));
+        });
+        preview.stdout.on("data", (chunk) => {
+          stdout += chunk;
+          if (stdout.includes("\n")) {
+            clearTimeout(timer);
+            try {
+              resolve(JSON.parse(stdout.split("\n")[0]).url);
+            } catch (error) {
+              reject(error);
+            }
+          }
+        });
+      });
+      const before = call("preview", "status", "--url", url);
+      assert.equal(before.status, "ready");
+      await fs.appendFile(
+        path.join(project, "skin.jsx"),
+        "\n// acceptance save\n"
+      );
+      let updated;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        updated = call("preview", "status", "--url", url);
+        if (updated.status === "ready" && updated.build.id !== before.build.id)
+          break;
+      }
+      assert.equal(updated.status, "ready");
+      assert.notEqual(
+        updated.build.id,
+        before.build.id,
+        "File watcher must publish a fresh build"
+      );
+      const exited = once(preview, "exit", {
+        signal: AbortSignal.timeout(15000),
+      });
+      call("preview", "stop", "--url", url);
+      await exited;
+    } finally {
+      if (preview.exitCode === null) {
+        if (process.platform === "win32")
+          spawnSync("taskkill", ["/PID", String(preview.pid), "/T", "/F"], {
+            stdio: "ignore",
+          });
+        else {
+          try {
+            process.kill(-preview.pid, "SIGTERM");
+          } catch (error) {
+            if (error.code !== "ESRCH") throw error;
+          }
         }
       }
     }
@@ -195,6 +200,7 @@ async function accept(version, platform, directory) {
         platform,
         cliVersion: cli.version,
         manifestSha256: sha(manifestBytes),
+        bases: ["default", "default-pod"],
         passed: true,
       },
       null,
