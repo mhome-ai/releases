@@ -143,10 +143,10 @@ test("DevKit source identity is independent of App version and rejects a dirty c
     if (oldCommit === undefined) delete process.env.SOURCE_COMMIT;
     else process.env.SOURCE_COMMIT = oldCommit;
   });
-  fs.mkdirSync(path.join(root, "src/ui-kit/cards/devkit"), { recursive: true });
+  fs.mkdirSync(path.join(root, "tools/card-devkit"), { recursive: true });
   fs.writeFileSync(path.join(root, "package.json"), '{"version":"1.6.0"}');
   fs.writeFileSync(
-    path.join(root, "src/ui-kit/cards/devkit/package.json"),
+    path.join(root, "tools/card-devkit/package.json"),
     '{"version":"2.0.0"}'
   );
   process.env.SOURCE_TAG = "card-devkit-v2.0.0";

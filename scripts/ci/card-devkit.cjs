@@ -114,7 +114,7 @@ async function verifySource(directory, { command = run } = {}) {
     commit = process.env.SOURCE_COMMIT;
   const version = JSON.parse(
     await fs.readFile(
-      path.join(directory, "src/ui-kit/cards/devkit/package.json")
+      path.join(directory, "tools/card-devkit/package.json")
     )
   ).version;
   if (
