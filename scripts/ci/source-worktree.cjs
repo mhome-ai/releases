@@ -7,7 +7,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const { execFileSync } = require("node:child_process");
-const REPOS = { foundation: "foundation", "agent": "agent", "agent-cloud": "agent-cloud", "meowcore-rust": "meowcore-rust", integration: "integration" };
+const REPOS = { foundation: "foundation", script: "script", "agent": "agent", "tiger": "tiger", "meowcore-rust": "meowcore-rust", integration: "integration" };
 const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], {
   encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
   env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
@@ -66,7 +66,7 @@ function prepare({ root, name, revision, reference, run, job, attempt }) {
     add(name, revision);
     const directory = path.join(work, name);
     let agent = "";
-    if (["agent-cloud", "meowcore-rust"].includes(name)) {
+    if (["tiger", "meowcore-rust"].includes(name)) {
       const pin = JSON.parse(fs.readFileSync(path.join(directory, "release/sources/agent.json"), "utf8"));
       if (pin.schemaVersion !== 1 || pin.repository !== "mhome-ai/agent" || !/^[a-f0-9]{40}$/.test(pin.commit || "")) throw new Error("Invalid Agent source pin");
       add("agent", pin.commit);

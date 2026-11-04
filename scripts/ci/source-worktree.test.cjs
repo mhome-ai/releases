@@ -31,7 +31,7 @@ function setup(t) {
   return { root, repo, args };
 }
 
-for (const name of ["foundation", "integration"]) test(`${name}: uses event SHA while preserving newer canonical main and cleans generated files`, (t) => {
+for (const name of ["foundation", "script", "integration"]) test(`${name}: uses event SHA while preserving newer canonical main and cleans generated files`, (t) => {
   const { root, repo, args } = setup(t);
   const source = repo(name, { "source.txt": "pinned" });
   fs.writeFileSync(path.join(source.origin, "later.txt"), "later");
@@ -51,8 +51,8 @@ for (const name of ["foundation", "integration"]) test(`${name}: uses event SHA 
 
 test("missing repositories fail and an existing task directory is never replaced", (t) => {
   const { root, repo, args } = setup(t);
-  assert.throws(() => prepare({ ...args, name: "agent-cloud", revision: "a".repeat(40) }), /provision/);
-  assert.equal(fs.existsSync(path.join(root, "agent-cloud")), false);
+  assert.throws(() => prepare({ ...args, name: "tiger", revision: "a".repeat(40) }), /provision/);
+  assert.equal(fs.existsSync(path.join(root, "tiger")), false);
   const source = repo("foundation", { "source.txt": "pinned" });
   const work = path.join(root, "work/foundation-123-test-1");
   fs.mkdirSync(work, { recursive: true }); fs.writeFileSync(path.join(work, "owner.txt"), "other");
@@ -67,15 +67,15 @@ test("consumer gets its exact Agent pin and partial preparation is rolled back",
   const agent = repo("agent", { "Cargo.toml": '[workspace.package]\nversion = "0.11.5"\n', "scripts/consumer-source.cjs": helper });
   git(agent.clone, "tag", "-a", "v0.11.5", "-m", "v0.11.5", agent.revision);
   const pin = { schemaVersion: 1, repository: "mhome-ai/agent", version: "0.11.5", commit: agent.revision };
-  const cloud = repo("agent-cloud", { "release/sources/agent.json": JSON.stringify(pin) });
-  const output = prepare({ ...args, name: "agent-cloud", revision: cloud.revision });
+  const cloud = repo("tiger", { "release/sources/agent.json": JSON.stringify(pin) });
+  const output = prepare({ ...args, name: "tiger", revision: cloud.revision });
   assert.equal(git(output.MHOME_AGENT_DIR, "rev-parse", "HEAD"), agent.revision);
   assert.equal(path.dirname(output.MHOME_AGENT_DIR), path.dirname(output.MHOME_SOURCE_DIR));
   cleanup(output.MHOME_WORK_ROOT, root);
   fs.writeFileSync(path.join(cloud.origin, "release/sources/agent.json"), JSON.stringify({ ...pin, version: "999.0.0" }));
   git(cloud.origin, "add", "."); git(cloud.origin, "commit", "-qm", "invalid pin");
-  assert.throws(() => prepare({ ...args, name: "agent-cloud", revision: git(cloud.origin, "rev-parse", "HEAD") }), /version/);
-  assert.equal(fs.existsSync(path.join(root, "work/agent-cloud-123-test-1")), false);
+  assert.throws(() => prepare({ ...args, name: "tiger", revision: git(cloud.origin, "rev-parse", "HEAD") }), /version/);
+  assert.equal(fs.existsSync(path.join(root, "work/tiger-123-test-1")), false);
   for (const source of [agent, cloud]) assert.equal(git(source.clone, "worktree", "list", "--porcelain").match(/^worktree /gm).length, 1);
 });
 
