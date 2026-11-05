@@ -5,7 +5,6 @@
 // runner owner; jobs fetch objects and own only their detached worktrees.
 const fs = require("node:fs");
 const path = require("node:path");
-const os = require("node:os");
 const { execFileSync } = require("node:child_process");
 const REPOS = { foundation: "foundation", script: "script", "agent": "agent", "tiger": "tiger", "meowcore-rust": "meowcore-rust", integration: "integration" };
 const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], {
@@ -81,18 +80,4 @@ function prepare({ root, name, revision, reference, run, job, attempt }) {
 }
 
 module.exports = { prepare, cleanup };
-if (require.main === module) {
-  try {
-    const root = path.resolve(process.env.MHOME_ROOT || path.join(os.homedir(), ".mhome"));
-    if (process.argv[2] === "prepare") {
-      const envFile = process.env.GITHUB_ENV;
-      if (!envFile) throw new Error("GITHUB_ENV is required");
-      const output = prepare({ root, name: process.argv[3], revision: process.env.GITHUB_SHA, reference: process.env.GITHUB_REF,
-        run: process.env.GITHUB_RUN_ID, job: process.env.GITHUB_JOB, attempt: process.env.GITHUB_RUN_ATTEMPT });
-      fs.appendFileSync(envFile, Object.entries(output).map(([key, value]) => `${key}=${value}\n`).join(""));
-      console.log(JSON.stringify(output));
-    } else if (process.argv[2] === "cleanup") {
-      cleanup(process.env.MHOME_WORK_ROOT, root);
-    } else throw new Error("Usage: source-worktree.cjs prepare REPOSITORY | cleanup");
-  } catch (error) { console.error(error.message); process.exitCode = 1; }
-}
+// CI callers invoke prepare/cleanup with explicit arguments and own their receipts.
