@@ -262,12 +262,10 @@ test("install.mhome.ai URL and bucket are pinned; role ARNs come from org vars",
 test("linux runner entrypoints clone ~/.mhome sources at start", () => {
   const script = read("runners/ensure-mhome-sources.sh");
   assert.match(script, /git clone/);
-  assert.match(script, /baycat/);
-  assert.match(script, /^clone_if_missing integration$/m);
-  assert.doesNotMatch(script, /^clone_if_missing plugin$/m);
-  assert.match(script, /meowcore-rust/);
-  assert.match(script, /releases/);
-  assert.doesNotMatch(script, /pallas-cat/);
+  const inventory = require("node:child_process").execFileSync("bash",
+    [path.join(ROOT, "runners/ensure-mhome-sources.sh"), "--list"], {encoding:"utf8"}).trim().split("\n");
+  assert.deepEqual(inventory, ["baycat", "integration", "meowcore-rust", "releases", "agent", "tiger", "foundation", "script"]);
+  assert.doesNotMatch(script, /MHOME_ROOT/);
   for (const file of [
     "runners/linux-arm64/entrypoint.sh",
     "runners/linux-amd64/entrypoint.sh",

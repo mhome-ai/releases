@@ -4,7 +4,13 @@
 # the SSH key lives in the runner-ssh volume and is not available at build time.
 set -euo pipefail
 
-root="${MHOME_ROOT:-$HOME/.mhome}"
+repositories=(baycat integration meowcore-rust releases agent tiger foundation script)
+if [[ $# == 1 && "$1" == --list ]]; then
+  printf '%s\n' "${repositories[@]}"
+  exit 0
+fi
+[[ $# == 0 ]] || { echo 'usage: ensure-mhome-sources.sh [--list]' >&2; exit 2; }
+root="$HOME/.mhome"
 mkdir -p "$root"
 mkdir -p "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
@@ -24,7 +30,7 @@ elif [ -f "$HOME/.ssh/id_rsa" ]; then
   key="$HOME/.ssh/id_rsa"
 else
   echo "runner is missing a GitHub SSH key at $HOME/.ssh/id_ed25519" >&2
-  echo "put a read key for baycat, integration, meowcore-rust, agent, agent-cloud, foundation, and releases in the runner-ssh volume" >&2
+  echo "put a read key for ${repositories[*]} in the runner-ssh volume" >&2
   exit 1
 fi
 
@@ -44,11 +50,6 @@ clone_if_missing() {
   git clone "git@github.com:mhome-ai/${2:-$name}.git" "$dest"
 }
 
-clone_if_missing baycat
-clone_if_missing integration
-clone_if_missing meowcore-rust
-clone_if_missing releases
-
-clone_if_missing agent agent
-clone_if_missing agent-cloud
-clone_if_missing foundation
+for repository in "${repositories[@]}"; do
+  clone_if_missing "$repository"
+done
