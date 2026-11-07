@@ -49,6 +49,12 @@ registration, source checkouts and downloaded dependencies remain in those volum
 Do not use `down -v`. Cargo objects live under `cargo-target/debian11` only for
 the duration of one job.
 
+Both images include SHA-256 pinned FFmpeg/FFprobe `b6.1.1` static binaries on
+PATH, matching Camera's existing media fixture toolchain. Debian 11's FFmpeg is
+too old for the `-fps_mode` fixture contract. The image smoke test encodes H264,
+HEVC Main10 and Opus, probes Main10 and decodes it as the unprivileged runner.
+Product packaging still selects and verifies its own bundled media tools.
+
 ## Compiled artifact lifecycle
 
 Both runner images install job-started and job-completed hooks. The completed

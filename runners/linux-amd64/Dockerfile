@@ -100,6 +100,8 @@ COPY --chmod=755 linux-amd64/entrypoint.sh /usr/local/bin/linux-amd64-runner-ent
 COPY --chmod=755 ensure-mhome-sources.sh /usr/local/bin/ensure-mhome-sources.sh
 COPY --chmod=755 verify-linux-builder.sh /usr/local/bin/verify-linux-builder.sh
 COPY --chmod=755 cleanup-job-target.py job-started.sh job-completed.sh /usr/local/bin/
+COPY --chmod=755 install-test-ffmpeg.sh /usr/local/bin/
+RUN install-test-ffmpeg.sh
 
 USER runner
 WORKDIR /home/runner
