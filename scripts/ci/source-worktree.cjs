@@ -7,10 +7,21 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const REPOS = { foundation: "foundation", script: "script", "agent": "agent", "tiger": "tiger", "meowcore-rust": "meowcore-rust", integration: "integration" };
-const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], {
-  encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-}).trim();
+function git(cwd, ...args) {
+  const attempts = args[0] === "fetch" ? 3 : 1;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return execFileSync("git", ["-C", cwd, ...args], {
+        encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      }).trim();
+    } catch (error) {
+      if (attempt === attempts - 1) throw error;
+      console.error(`${path.basename(cwd)}: git fetch failed; retry ${attempt + 2}/${attempts}`);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2000 * (attempt + 1));
+    }
+  }
+}
 
 function requireClone(root, name) {
   const clone = path.join(root, name);

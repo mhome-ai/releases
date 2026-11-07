@@ -86,3 +86,43 @@ test("unknown commits fail without falling back to canonical HEAD", (t) => {
   assert.equal(fs.existsSync(path.join(root, "work/agent-123-test-1")), false);
   assert.equal(git(source.clone, "rev-parse", "HEAD"), source.revision);
 });
+
+for (const outcome of ["recovers", "unavailable", "write-fails"]) {
+  test(`source fetch retries are bounded and worktree writes never retry: ${outcome}`, (t) => {
+    const { root, repo, args } = setup(t);
+    const source = repo("agent", { "source.txt": "pinned" });
+    const base = path.dirname(root), bin = path.join(base, "bin"), trace = path.join(base, "git-calls.jsonl");
+    fs.mkdirSync(bin);
+    const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+    const originalPath = process.env.PATH;
+    fs.writeFileSync(path.join(bin, "git"), `#!${process.execPath}
+const fs = require('node:fs'), {spawnSync} = require('node:child_process');
+const args = process.argv.slice(2), trace = ${JSON.stringify(trace)};
+const previous = fs.existsSync(trace) ? fs.readFileSync(trace, 'utf8').trim().split('\\n').map(JSON.parse) : [];
+fs.appendFileSync(trace, JSON.stringify(args) + '\\n');
+const outcome = ${JSON.stringify(outcome)};
+if (args[2] === 'fetch' && (outcome === 'unavailable' || outcome === 'recovers' && previous.filter(a => a[2] === 'fetch').length < 2)) {
+  console.error('ssh: connect to host github.com port 22: No route to host');
+  process.exit(128);
+}
+if (args[2] === 'worktree' && args[3] === 'add' && outcome === 'write-fails') process.exit(128);
+const result = spawnSync(${JSON.stringify(realGit)}, args, {stdio: 'inherit'});
+process.exit(result.status ?? 1);
+`, { mode: 0o755 });
+    process.env.PATH = `${bin}${path.delimiter}${originalPath}`;
+    try {
+      if (outcome === "recovers") {
+        const output = prepare({ ...args, name: "agent", revision: source.revision });
+        assert.equal(git(output.MHOME_SOURCE_DIR, "rev-parse", "HEAD"), source.revision);
+        cleanup(output.MHOME_WORK_ROOT, root);
+      } else {
+        assert.throws(() => prepare({ ...args, name: "agent", revision: source.revision }));
+        assert.equal(fs.existsSync(path.join(root, "work/agent-123-test-1")), false);
+      }
+    } finally { process.env.PATH = originalPath; }
+    const calls = fs.readFileSync(trace, "utf8").trim().split("\n").map(JSON.parse);
+    assert.equal(calls.filter(a => a[2] === "fetch").length, outcome === "recovers" ? 4 : outcome === "unavailable" ? 3 : 2);
+    assert.equal(calls.filter(a => a[2] === "worktree" && a[3] === "add").length, outcome === "unavailable" ? 0 : 1);
+    assert.equal(git(source.clone, "rev-parse", "HEAD"), source.revision);
+  });
+}
