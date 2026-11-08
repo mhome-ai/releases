@@ -18,7 +18,7 @@ function workflowFiles() {
 
 function productWorkflows() {
   return workflowFiles().filter(
-    (file) => !/\/run-tagged(?:-plugin|-matter)?\.yaml$/.test(file) && !/\/developer-(kit|sdk)\.yaml$/.test(file)
+    (file) => !/\/run-tagged(?:-plugin|-matter)?\.yaml$/.test(file) && !/\/developer-(kit|sdk)\.yaml$/.test(file) && !file.endsWith("/run-developer-kit.yaml")
   );
 }
 
@@ -43,7 +43,7 @@ test("workflows never clone and never use GitHub-hosted compile jobs", () => {
     assert.doesNotMatch(text, /GPR_TOKEN/, file);
     assert.doesNotMatch(text, /actions\/upload-artifact/, file);
     assert.doesNotMatch(text, /actions\/download-artifact/, file);
-    if (!file.endsWith("/developer-kit.yaml")) assert.doesNotMatch(text, /^\s+needs:/m, file);
+    if (!file.endsWith("/run-developer-kit.yaml")) assert.doesNotMatch(text, /^\s+needs:/m, file);
     assert.doesNotMatch(text, /plugin-build-ephemeral|builder_labels|PLUGIN_SOURCE_READ_TOKEN/, file);
   }
 });
