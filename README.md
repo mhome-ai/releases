@@ -259,6 +259,10 @@ Publication builds and tests with registry dependencies and no local path patche
 sharing compiled dependency output across the three packages. Order is service API,
 runtime, public facade. Existing registry versions require archive equivalence;
 uncertain writes get read-only resolution without another upload.
+Registry-based builds, tests, packaging and verification also remove the Cargo
+upload token from their child environment. Only the final `cargo publish
+--no-verify` inherits it, after the same locked source has passed compilation and
+tests; uploading does not rerun author build scripts with that credential.
 
 Registry verification reuses Foundation's existing bounded verifier, frozen to the
 already published tag/commit/hash in `developer-sdk-registry.json`; it does not

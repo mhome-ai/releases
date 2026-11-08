@@ -20,7 +20,7 @@ function fixture(t) {
   const plan={schemaVersion:1,packages,dependencyLockSha256:createHash('sha256').update(lock).digest('hex'),files:inventory(source)}, calls=[];
   let state='absent',uncertain=false;
   const command=(name,args,options)=>{
-    calls.push({name,args,cwd:options?.cwd});
+    calls.push({name,args,cwd:options?.cwd,env:options?.env});
     if(name==='python3') {
       if(args[2]==='exists' && state==='absent')throw Object.assign(new Error('absent'),{status:3});
       if(args[2]==='exists' && state==='error')throw Object.assign(new Error('registry unavailable'),{status:1});
@@ -51,6 +51,26 @@ test('existing SDK packages are content-verified without another upload',t=>{
   const f=fixture(t);f.state('exists');publishSdk(f.plan,f.source,f.tool,{command:f.command});
   assert.equal(f.calls.filter(c=>c.name==='python3'&&c.args[2]==='verify').length,3);
   assert.equal(f.calls.filter(c=>c.name==='cargo'&&c.args[0]==='publish'&&!c.args.includes('--dry-run')).length,0);
+});
+test('only the final no-build SDK upload can inherit the Cargo token',t=>{
+  const f=fixture(t),previous=process.env.CARGO_REGISTRY_TOKEN;
+  process.env.CARGO_REGISTRY_TOKEN='fixture-upload-token';
+  try {publishSdk(f.plan,f.source,f.tool,{command:f.command});}
+  finally {
+    if(previous===undefined)delete process.env.CARGO_REGISTRY_TOKEN;
+    else process.env.CARGO_REGISTRY_TOKEN=previous;
+  }
+  const uploads=f.calls.filter(c=>c.name==='cargo'&&c.args[0]==='publish'&&!c.args.includes('--dry-run'));
+  assert.equal(uploads.length,3);
+  for(const call of f.calls) {
+    if(uploads.includes(call)) {
+      assert(call.args.includes('--no-verify'),'compilation was already verified without credentials');
+      assert.equal(call.env,undefined,'the standard upload command inherits its workflow credential');
+    } else {
+      assert(call.env,'every preparation and verification child receives an explicit environment');
+      assert.equal(Object.hasOwn(call.env,'CARGO_REGISTRY_TOKEN'),false);
+    }
+  }
 });
 for(const state of ['different','error']) test(`registry ${state} stops before any later package`,t=>{
     const f=fixture(t);f.state(state);

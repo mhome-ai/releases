@@ -31,6 +31,10 @@ function verifyPlan(plan,directory) {
 function publishSdk(plan,directory,tool,{command=run}={}) {
   verifyPlan(plan,directory);
   if(hash(fs.readFileSync(tool))!==registryConfig().sha256)throw new Error('Registry verifier differs from the pinned source');
+  // Cargo tests and package verification execute source/build scripts. The
+  // workflow's upload credential belongs only to the final no-build upload.
+  const buildEnv={...process.env};delete buildEnv.CARGO_REGISTRY_TOKEN;
+  const prepare=(name,args,options={})=>command(name,args,{...options,env:buildEnv});
   const publication=path.join(path.dirname(directory),'publication');fs.mkdirSync(publication);
   for(const item of plan.packages) {
     const project=path.join(publication,item.name);
@@ -38,19 +42,19 @@ function publishSdk(plan,directory,tool,{command=run}={}) {
     // Preserve captured dependency versions on exact retries. Only the source
     // packages' registry identities change; unrelated dependencies do not update.
     fs.copyFileSync(path.join(path.dirname(directory),'dependency.lock'),path.join(project,'Cargo.lock'));
-    command('cargo',['update','--workspace'],{cwd:project});
+    prepare('cargo',['update','--workspace'],{cwd:project});
     const target=path.join(publication,'target');
-    command('cargo',['test','--locked','--lib','--tests','--target-dir',target],{cwd:project});
-    command('cargo',['publish','--locked','--dry-run','--target-dir',target],{cwd:project});
-    command('cargo',['package','--locked','--no-verify','--offline','--target-dir',target],{cwd:project});
+    prepare('cargo',['test','--locked','--lib','--tests','--target-dir',target],{cwd:project});
+    prepare('cargo',['publish','--locked','--dry-run','--target-dir',target],{cwd:project});
+    prepare('cargo',['package','--locked','--no-verify','--offline','--target-dir',target],{cwd:project});
     const archive=path.join(target,'package',`${item.name}-${item.version}.crate`);
     if(!fs.statSync(archive).isFile())throw new Error('SDK package archive is missing');
-    const check=action=>command('python3',['-B',tool,action,'crate',item.name,item.version,...(action==='verify'?[archive]:[])]);
+    const check=action=>prepare('python3',['-B',tool,action,'crate',item.name,item.version,...(action==='verify'?[archive]:[])]);
     let exists;
     try {check('exists');exists=true;} catch(error) {if(error.status!==3)throw error;exists=false;}
     if(!exists) {
       // An uncertain upload gets read-only resolution, never another upload.
-      try {command('cargo',['publish','--locked','--target-dir',target],{cwd:project});}
+      try {command('cargo',['publish','--locked','--no-verify','--target-dir',target],{cwd:project});}
       catch {process.stderr.write(`Checking uncertain upload of ${item.name} without retrying it\n`);}
       check('wait');
     }
