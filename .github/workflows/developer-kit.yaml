@@ -37,10 +37,7 @@ jobs:
           git -C "$root/releases" fetch --no-tags origin "$GITHUB_SHA"
           git -C "$root/releases" show "$GITHUB_SHA:scripts/ci/developer-kit-job.cjs" > "$RUNNER_TEMP/developer-kit-job.cjs"
           work="$(node "$RUNNER_TEMP/developer-kit-job.cjs" setup prepare none)"
-          umask 077
-          cat > "$work/invocation.json" <<'INVOCATION'
-          ${{ toJSON(inputs) }}
-          INVOCATION
+          node -e 'const fs = require("node:fs"); const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")); fs.writeFileSync(process.argv[1], JSON.stringify(event.inputs), {mode: 0o600});' "$work/invocation.json"
       - name: Build fixed source without publisher credentials
         shell: bash
         run: |
@@ -55,8 +52,8 @@ jobs:
           set -euo pipefail
           work="$HOME/.mhome/work/developer-kit-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-prepare-none"
           source "$work/releases/scripts/ci/lib.sh"
-          node "$work/releases/scripts/ci/developer-kit-job.cjs" prepare prepare none "$work/invocation.json" "${{ vars.NODE_RELEASE_KEYRING }}"
-          assume_aws_role "${{ vars.CARD_DEVKIT_PUBLISH_ROLE_ARN }}"
+          assume_aws_role "${{ vars.RUNTIME_PUBLISH_ROLE_ARN }}"
+          node "$work/releases/scripts/ci/developer-kit-job.cjs" prepare prepare none "$work/invocation.json"
           node "$work/releases/scripts/ci/developer-kit-job.cjs" upload prepare none "$work/invocation.json"
       - name: Clean owned publication files
         if: always()
@@ -89,10 +86,7 @@ jobs:
           git -C "$root/releases" fetch --no-tags origin "$GITHUB_SHA"
           git -C "$root/releases" show "$GITHUB_SHA:scripts/ci/developer-kit-job.cjs" > "$RUNNER_TEMP/developer-kit-job.cjs"
           work="$(node "$RUNNER_TEMP/developer-kit-job.cjs" setup accept ${{ matrix.platform }})"
-          umask 077
-          cat > "$work/invocation.json" <<'INVOCATION'
-          ${{ toJSON(inputs) }}
-          INVOCATION
+          node -e 'const fs = require("node:fs"); const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")); fs.writeFileSync(process.argv[1], JSON.stringify(event.inputs), {mode: 0o600});' "$work/invocation.json"
       - name: Exercise public installer with no system Node on PATH
         shell: bash
         run: |
@@ -116,10 +110,7 @@ jobs:
           git -C "$root/releases" fetch --no-tags origin "$GITHUB_SHA"
           git -C "$root/releases" show "$GITHUB_SHA:scripts/ci/developer-kit-job.cjs" > "$RUNNER_TEMP/developer-kit-job.cjs"
           work="$(node "$RUNNER_TEMP/developer-kit-job.cjs" setup promote none)"
-          umask 077
-          cat > "$work/invocation.json" <<'INVOCATION'
-          ${{ toJSON(inputs) }}
-          INVOCATION
+          node -e 'const fs = require("node:fs"); const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")); fs.writeFileSync(process.argv[1], JSON.stringify(event.inputs), {mode: 0o600});' "$work/invocation.json"
       - name: Promote index after every platform passed
         shell: bash
         env:
@@ -128,7 +119,7 @@ jobs:
           set -euo pipefail
           work="$HOME/.mhome/work/developer-kit-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-promote-none"
           source "$work/releases/scripts/ci/lib.sh"
-          assume_aws_role "${{ vars.CARD_DEVKIT_PUBLISH_ROLE_ARN }}"
+          assume_aws_role "${{ vars.RUNTIME_PUBLISH_ROLE_ARN }}"
           node "$work/releases/scripts/ci/developer-kit-job.cjs" promote promote none "$work/invocation.json"
       - name: Clean owned publication files
         if: always()

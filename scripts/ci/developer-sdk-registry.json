@@ -1,0 +1,7 @@
+{
+  "repository": "foundation",
+  "tag": "mhome-script-api-v0.3.0",
+  "commit": "b611c7c0bb92ec734e9b82f1361d82f177e74c3c",
+  "path": "scripts/release-registry.py",
+  "sha256": "0d04dde89d1adfce6728904e9a8d9d23ed30d5042f8a3dd122ef2e8ac642365d"
+}

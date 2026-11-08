@@ -18,7 +18,7 @@ function workflowFiles() {
 
 function productWorkflows() {
   return workflowFiles().filter(
-    (file) => !/\/run-tagged(?:-plugin|-matter)?\.yaml$/.test(file) && !file.endsWith("/developer-kit.yaml")
+    (file) => !/\/run-tagged(?:-plugin|-matter)?\.yaml$/.test(file) && !/\/developer-(kit|sdk)\.yaml$/.test(file)
   );
 }
 
@@ -340,4 +340,26 @@ test("Developer Kit promotes one index only after every platform exercises the p
   const source = read("scripts/ci/developer-kit.cjs");
   assert.doesNotMatch(source, /gh.*run|validate_release_tag\.yml/);
   assert.match(source, /gpgv/);
+  assert.doesNotMatch(workflow, /NODE_RELEASE_KEYRING|CARD_DEVKIT_PUBLISH_ROLE_ARN/);
+  assert.match(workflow, /vars\.RUNTIME_PUBLISH_ROLE_ARN/);
+  assert.match(workflow, /\["self-hosted","Windows","X64"\]/);
+});
+
+test("Plugin SDK publication is independent from Kit signing and consumes frozen tested sources", () => {
+  const workflow=read(".github/workflows/developer-sdk.yaml");
+  const [build,publish]=workflow.split("      - name: Publish or verify exact registry packages");
+  assert.doesNotMatch(build,/secrets\.|CARGO_REGISTRY_TOKEN/);
+  assert.match(publish,/secrets\.CARGO_REGISTRY_TOKEN/);
+  assert.match(workflow,/developer-sdk-job\.cjs.*build/);
+  assert.match(workflow,/if: always\(\)/);
+  assert.doesNotMatch(read(".github/workflows/developer-kit.yaml"),/CARGO_REGISTRY_TOKEN/);
+});
+
+
+test("Developer publication inputs are read as event data without shell interpolation", () => {
+  for (const name of ["developer-kit.yaml", "developer-sdk.yaml"]) {
+    const workflow=read(`.github/workflows/${name}`);
+    assert.doesNotMatch(workflow,/\$\{\{ toJSON\(inputs\) \}\}/);
+    assert.match(workflow,/GITHUB_EVENT_PATH/);
+  }
 });

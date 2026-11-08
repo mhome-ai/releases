@@ -59,7 +59,7 @@ async function main() {
    const {pack}=await import('./developer-kit-pack.mjs');
    await pack(kit,source,artifacts,tag,commit);
  } else if(action==='prepare') {
-   await publisher.prepare(artifacts,{cliVersion,orchestratorCommit:process.env.GITHUB_SHA,nodeKeyring:args[1]});
+   await publisher.prepare(artifacts,{cliVersion,orchestratorCommit:process.env.GITHUB_SHA});
  } else if(action==='upload') await publisher.publish(artifacts);
  else if(action==='accept') await require('./developer-kit-accept.cjs').accept(kit,version,platform,path.join(work,'acceptance'));
  else if(action==='promote') {

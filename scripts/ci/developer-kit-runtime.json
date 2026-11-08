@@ -23,5 +23,6 @@
       "sha256": "d2046d28c2c3dcd211ac5145c0bf30e2047ef9dfb306693c8c6e2eccd8b95fa5",
       "minimumOs": "Windows 10 / Server 2016"
     }
-  }
+  },
+  "nodeSigningKey": "5BE8A3F6C8A5C01D106C0AD820B1A390B168D356"
 }

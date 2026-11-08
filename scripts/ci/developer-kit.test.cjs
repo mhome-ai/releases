@@ -7,6 +7,40 @@ const crypto = require("node:crypto");
 const { publish, promoteIndex, verifySource } = require("./developer-kit.cjs");
 const hash = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
 
+test("first publication reads authenticated S3 state and rejects permission or transport uncertainty", async (t) => {
+  const {readExistingManifest} = require("./developer-kit.cjs");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "developer-kit-existing-"));
+  t.after(() => fs.rmSync(root, {recursive:true, force:true}));
+  let body, failure, present = false;
+  const command = (name, args, options) => {
+    assert.equal(name, "aws");
+    const key = "devkits/extension/0.5.1/kit.json";
+    assert.equal(options.timeout, 45000);
+    if (args[1] === "list-objects-v2") {
+      assert.equal(args[args.indexOf("--prefix") + 1], key);
+      return JSON.stringify({KeyCount:present ? 1 : 0, Contents:present ? [{Key:key}] : []});
+    }
+    assert.equal(args[args.indexOf("--key") + 1], key);
+    if (failure) {
+      fs.writeFileSync(args.at(-1), "partial read");
+      throw Object.assign(new Error("object read failed"), {stderr:failure});
+    }
+    fs.writeFileSync(args.at(-1), body);
+    return JSON.stringify({ETag:'"original-etag"'});
+  };
+  assert.equal(await readExistingManifest(root, "extension", "0.5.1", command), undefined);
+  assert.deepEqual(fs.readdirSync(root), []);
+  present = true; body = Buffer.from("original signed bytes");
+  assert.deepEqual(await readExistingManifest(root, "extension", "0.5.1", command), body);
+  assert.deepEqual(fs.readdirSync(root), []);
+  for (failure of ["An error occurred (AccessDenied)", "connection timed out", "An error occurred (NoSuchKey)", "upstream HTTP 404 without an S3 missing-object code"]) {
+    await assert.rejects(readExistingManifest(root, "extension", "0.5.1", command), /object read failed/);
+    assert.deepEqual(fs.readdirSync(root), []);
+  }
+  await assert.rejects(readExistingManifest(root,"extension","0.5.1",()=>"{}"),/Invalid publication state listing/);
+  await assert.rejects(readExistingManifest(root,"extension","0.5.1",()=>{throw Error("list access denied");}),/list access denied/);
+});
+
 test("index promotion preserves exact releases and cannot roll latest backwards", () => {
   const entry = {
     version: "1.10.0",
@@ -55,6 +89,11 @@ test("publish verifies public bytes before CAS index promotion and refuses occup
   let corruptPublic = false;
   const command = (command, args) => {
     assert.equal(command, "aws");
+    if (args[1] === "list-objects-v2") {
+      const prefix=args[args.indexOf("--prefix")+1];
+      const keys=[...objects.keys()].filter(key=>key.startsWith(prefix)).sort().slice(0,1);
+      return JSON.stringify({KeyCount:keys.length,Contents:keys.map(Key=>({Key}))});
+    }
     const key = args[args.indexOf("--key") + 1];
     if (args[1] === "get-object") {
       if (!objects.has(key)) throw new Error("NoSuchKey");
@@ -338,7 +377,7 @@ test("preparation freezes signed CLI assets for every platform, including the Wi
   }
   const commands = [];
   const manifest = await prepare(root, {
-    cliVersion:"2.0.0",orchestratorCommit:"b".repeat(40),nodeKeyring:"pinned-keyring",
+    cliVersion:"2.0.0",orchestratorCommit:"b".repeat(40),
     downloadFile: async (url) => {
       const pathname = new URL(url).pathname;
       if (signatures.has(pathname)) return signatures.get(pathname);
@@ -350,7 +389,7 @@ test("preparation freezes signed CLI assets for every platform, including the Wi
     command: (name, args) => {
       commands.push(name);
       if (name === "python3") fs.writeFileSync(args.at(-1), "normalized node");
-      else assert.equal(name, "gpgv");
+      else assert(["gpg", "gpgv"].includes(name));
     },
     existingEnvelope: async () => undefined,
     signer: async (value) => Buffer.from(JSON.stringify(value)),

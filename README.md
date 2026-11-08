@@ -185,8 +185,9 @@ commits, worker protocol, minimum CLI/OS, and URL/size/SHA-256 of every asset.
 `acceptance.json` freezes signed, released native CLI artifacts for verification.
 
 `developer-kit-runtime.json` pins official Node/npm versions and upstream hashes.
-The publisher verifies Node's signed SHASUMS with the maintained local official
-keyring. Package installation uses committed locks with lifecycle scripts and bin
+The publisher verifies Node's signed SHASUMS with the fixed official public key
+under `scripts/ci/node-release-keys/`. Its source commit, fingerprint, hash and
+third-party license are recorded alongside it. Package installation uses committed locks with lifecycle scripts and bin
 links disabled. Every archive rejects links/special files and preserves required
 executable bits. Consumers do not npm-install the Kit itself or need system Node.
 
@@ -210,8 +211,9 @@ Node downloads are shared by content in the client cache across Kits.
 
 The existing Runtime Minisign trust key remains authoritative. No unsigned
 installer flag or environment-based public-key override is added. Workflow inputs,
-work paths, source identities, selected CLI and keyring path travel through explicit
-arguments/private invocation JSON. The only step-specific secret environment is
+work paths, source identities and selected CLI travel through explicit
+arguments/private invocation JSON. Fixed verification keys are derived from source.
+The only step-specific secret environment is
 `RUNTIME_CATALOG_PRIVATE_KEY_B64`; standard GitHub/AWS tool credentials remain.
 
 Runner/release prerequisites:
@@ -223,18 +225,50 @@ Runner/release prerequisites:
 - Existing macOS ARM64 + Rosetta, Linux ARM64/x64 and Windows x64 self-hosted
   runners, with Node for the recipe, Minisign and tar. Product subprocesses use
   only the downloaded managed tools.
-- Publisher Node/npm, Python 3, Git, AWS CLI, Minisign and gpgv. The existing
-  `NODE_RELEASE_KEYRING` GitHub variable supplies the explicit keyring argument.
-- The existing `CARD_DEVKIT_PUBLISH_ROLE_ARN` GitHub variable is passed as a
-  credential setup argument. Its IAM policy must cover `devkits/*` Put/Get and
-  bucket existence checks before publication; this source change does not alter
-  cloud permissions. Secrets never enter artifacts or invocation files.
+- Publisher Node/npm, Python 3, Git, AWS CLI, Minisign and GnuPG (`gpg`/`gpgv`).
+  No keyring GitHub variable or environment override is required.
+- Reuse `RUNTIME_PUBLISH_ROLE_ARN` for credential setup. Deploy Baycat's
+  `release/docker/aws-distribution.yml` update first: the Runtime role must trust
+  this workflow and permit scoped `devkits/*` Get/Put/List operations. Source
+  changes do not apply IAM policy updates. Secrets never enter artifacts or invocation files.
 - Publish Script's required testing export and refresh Integration's root/Kit npm
   pins and locks before releasing Extension. Publish the new meow CLI first.
   Deploy new Hub/Lion contract support before live Wave contract acquisition.
-- Missing public objects must return 404; 403/network failures are errors. Version
-  files use immutable caching, indices use no-cache. MIME/CORS remain correct.
+- Authenticated S3 reads establish absence and preserve the original signed bytes
+  on retries. Only S3's missing-object response permits a first publication;
+  permission/network failures stop it. Public CDN reads verify uploaded bytes,
+  never establish absence. Version files use immutable caching, indices use
+  no-cache. MIME/CORS remain correct.
 
 ```sh
 node --test scripts/ci/developer-kit.test.cjs scripts/ci/workflow-contract.test.js
+```
+
+## Plugin SDK distribution
+
+`developer-sdk.yaml` publishes the ordinary Cargo SDK independently from Kit
+distribution. Select Integration's exact `sdk-plugin-vX.Y.Z` tag and full commit;
+the tag version is the public `mhome-plugin-sdk` facade version. The source owner
+keeps its three crate versions independent. No SDK release is implied by a Kit
+release or by source staging.
+
+The macOS publisher uses its existing flat Integration, Foundation and Releases
+checkouts. It freezes the SDK source and publisher, tests the normalized crates
+without credentials, then checks an exact source inventory before publication.
+Publication builds and tests with registry dependencies and no local path patches,
+sharing compiled dependency output across the three packages. Order is service API,
+runtime, public facade. Existing registry versions require archive equivalence;
+uncertain writes get read-only resolution without another upload.
+
+Registry verification reuses Foundation's existing bounded verifier, frozen to the
+already published tag/commit/hash in `developer-sdk-registry.json`; it does not
+introduce a third fork of that tool. SDK Cargo metadata records the Integration
+source tag and full commit. Apache-2.0 LICENSE/NOTICE files ship with every crate.
+The publication step uses the existing standard `CARGO_REGISTRY_TOKEN` secret;
+Releases must have access to that credential before invocation. This source change
+does not configure secrets, create tags or upload crates. Source inspection cannot
+prove that a missing GitHub secret is inherited from another repository.
+
+```sh
+node --test scripts/ci/developer-sdk.test.cjs scripts/ci/workflow-contract.test.js
 ```

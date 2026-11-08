@@ -18,7 +18,7 @@ export async function pack(kit,source,output,tag,commit) {
   const files=[],payloads={};
   const add=async name=>{const bytes=await fs.readFile(path.join(output,name));files.push({path:name,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});};
   const manifest=JSON.parse(await fs.readFile(path.join(source,SOURCE[kit].manifest)));
-  if(kit==='wave' && !manifest.license)throw new Error('Declare Wave Kit release licensing before publication; SDK release remains separate');
+  if(manifest.license !== 'Apache-2.0')throw new Error('First-party Kit license must be Apache-2.0');
   for(const platform of kit==='wave'?['portable']:Object.keys(config.platforms)) {
     const stage=path.join(output,`.stage-${platform}`);
     await fs.mkdir(stage);
@@ -35,6 +35,8 @@ export async function pack(kit,source,output,tag,commit) {
         await fs.mkdir(path.join(stage,'kit'));
         for(const name of ['worker.cjs','worker.mjs','src','package.json','README.md'])
           await fs.cp(path.join(source,'tools/devkit',name),path.join(stage,'kit',name),{recursive:true});
+        for(const name of ['LICENSE','NOTICE'])
+          await fs.copyFile(path.join(source,name),path.join(stage,'kit',name));
       }
       if(kit==='wave') {
         await fs.mkdir(path.join(stage,'kit/examples'));

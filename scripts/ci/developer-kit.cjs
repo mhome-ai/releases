@@ -97,17 +97,42 @@ async function sign(value, directory, existing) {
     );
   }
 }
-async function existing(url) {
-  const response = await fetch(url, {
-    signal: AbortSignal.timeout(30000),
-    cache: "no-store",
-  });
-  if (response.status === 404) return undefined;
-  if (!response.ok)
-    throw new Error(
-      `Could not establish publication state: HTTP ${response.status}`
-    );
-  return Buffer.from(await response.arrayBuffer());
+async function readExistingObject(directory, key, command = run) {
+  if (!/^devkits\/(ui|extension|wave)\/(index\.json|\d+\.\d+\.\d+\/kit\.json)$/.test(key))
+    throw new Error("Invalid publication state object");
+  const file = path.join(directory, `.existing-${crypto.randomUUID()}`);
+  try {
+    // Public S3 origins legitimately return 403 for absent objects. Only the
+    // authenticated object store decides whether a version already exists;
+    // public delivery is checked separately after uploading the candidate.
+    // A prefix-scoped ListBucket grant does not guarantee that GET/HEAD on a
+    // missing key returns 404. Explicit listing establishes absence without
+    // broadening the role or treating AccessDenied as a missing object.
+    const listing = JSON.parse(command("aws", ["s3api", "list-objects-v2",
+      "--bucket", "mhome-install-distribution", "--prefix", key, "--max-keys", "1",
+      "--output", "json", "--cli-connect-timeout", "10", "--cli-read-timeout", "30"],
+      {timeout: 45000}));
+    const contents = listing.Contents ?? [];
+    if (![0,1].includes(listing.KeyCount) || !Array.isArray(contents)
+        || contents.length !== listing.KeyCount
+        || contents.some(item => typeof item.Key !== "string" || !item.Key.startsWith(key)))
+      throw new Error("Invalid publication state listing");
+    // This general-purpose S3 bucket lists keys lexicographically. An exact key
+    // precedes every longer key with the same prefix.
+    if (!contents.some(item => item.Key === key)) return undefined;
+    const object = JSON.parse(command("aws", ["s3api", "get-object", "--bucket", "mhome-install-distribution",
+      "--key", key, "--output", "json",
+      "--cli-connect-timeout", "10", "--cli-read-timeout", "30", file],
+      {timeout: 45000}));
+    if (typeof object.ETag !== "string" || !object.ETag) throw new Error("Missing object ETag");
+    return {bytes: await fs.readFile(file), etag: object.ETag};
+  } finally {
+    await fs.rm(file, {force: true});
+  }
+}
+async function readExistingManifest(directory, kit, version, command = run) {
+  kitId(kit); exact(version);
+  return (await readExistingObject(directory, `devkits/${kit}/${version}/kit.json`, command))?.bytes;
 }
 const SOURCE = {ui:{repository:"pallas-cat",manifest:"tools/card-devkit/package.json"},
   extension:{repository:"integration",manifest:"tools/devkit/package.json"},
@@ -154,9 +179,9 @@ async function prepare(
   {
     downloadFile = download,
     command = run,
-    existingEnvelope = existing,
+    existingEnvelope,
     signer = sign,
-    cliVersion, orchestratorCommit, nodeKeyring,
+    cliVersion, orchestratorCommit,
   } = {}
 ) {
   const built = JSON.parse(
@@ -174,8 +199,9 @@ async function prepare(
     path.join(directory, "node-SHASUMS256.txt.sig"),
     await downloadFile(`${nodeBase}/SHASUMS256.txt.sig`)
   );
-  if (!nodeKeyring)
-    throw new Error("Configure the pinned official Node release keyring");
+  const nodeKeyring = path.join(directory, "node-signing-key.gpg");
+  command("gpg", ["--batch", "--yes", "--dearmor", "--output", nodeKeyring,
+    path.join(__dirname, "node-release-keys", `${config.nodeSigningKey}.asc`)]);
   command("gpgv", [
     "--keyring",
     nodeKeyring,
@@ -264,7 +290,9 @@ async function prepare(
     platforms,
     files,
   };
-  const prior = await existingEnvelope(`${BASE}/${built.kit}/${built.version}/kit.json`);
+  const prior = existingEnvelope
+    ? await existingEnvelope(`${BASE}/${built.kit}/${built.version}/kit.json`)
+    : await readExistingManifest(directory, built.kit, built.version, command);
   const bytes = await signer(manifest, directory, prior);
   await fs.writeFile(path.join(directory, "kit.json"), bytes);
   return manifest;
@@ -400,25 +428,11 @@ async function publish(
     },
     etag,
     previous;
-  try {
-    const result = JSON.parse(
-      command("aws", [
-        "s3api",
-        "get-object",
-        "--bucket",
-        bucket,
-        "--key",
-        `devkits/${manifest.kit}/index.json`,
-        indexFile,
-      ])
-    );
-    etag = result.ETag;
-    if (!etag) throw new Error("Missing index ETag");
-    previous = await fs.readFile(indexFile);
+  const priorIndex = await readExistingObject(directory, `devkits/${manifest.kit}/index.json`, command);
+  if (priorIndex) {
+    etag = priorIndex.etag;
+    previous = priorIndex.bytes;
     index = verifyEnvelope(previous, directory);
-  } catch (error) {
-    if (!/NoSuchKey|\(404\)/.test(String(error.stderr || error.message)))
-      throw error;
   }
   if(index.kit !== manifest.kit) throw new Error("Published index belongs to another Kit");
   const next = promoteIndex(index, {
@@ -459,6 +473,7 @@ async function publish(
 }
 module.exports = {
   SOURCE, kitId, verifySource,
+  readExistingManifest, readExistingObject,
   prepare,
   publish,
   promoteIndex,
@@ -475,7 +490,7 @@ if (require.main === module) {
   const [action,directory,...args] = process.argv.slice(2);
   const execute = {
     "verify-source":() => verifySource(directory,{kit:args[0],tag:args[1],commit:args[2]}),
-    prepare:() => prepare(directory,{cliVersion:args[0],orchestratorCommit:args[1],nodeKeyring:args[2]}),
+    prepare:() => prepare(directory,{cliVersion:args[0],orchestratorCommit:args[1]}),
     upload:() => publish(directory),
     promote:() => publish(directory,{promote:true}),
   }[action];
