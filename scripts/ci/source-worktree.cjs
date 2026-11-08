@@ -78,9 +78,13 @@ function prepare({ root, name, revision, reference, run, job, attempt }) {
     let agent = "";
     if (["tiger", "meowcore-rust"].includes(name)) {
       const pin = JSON.parse(fs.readFileSync(path.join(directory, "release/sources/agent.json"), "utf8"));
-      if (pin.schemaVersion !== 1 || pin.repository !== "mhome-ai/agent" || !/^[a-f0-9]{40}$/.test(pin.commit || "")) throw new Error("Invalid Agent source pin");
+      if (pin.schemaVersion !== 1 || pin.repository !== "mhome-ai/agent" || !/^[a-f0-9]{40}$/.test(pin.commit || "") || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(pin.version || "")) throw new Error("Invalid Agent source pin/version");
       add("agent", pin.commit);
       agent = path.join(work, "agent");
+      const tag = `refs/tags/v${pin.version}`;
+      // A SHA fetch need not fetch its tag. Fetch only this required release ref;
+      // do not overwrite conflicting local tags or rely on a warm runner cache.
+      git(agent, "fetch", "--no-tags", "origin", `${tag}:${tag}`);
       require(path.join(agent, "scripts/consumer-source.cjs")).verifyCheckout(directory, agent);
     }
     return { MHOME_WORK_ROOT: work, MHOME_SOURCE_DIR: directory, MHOME_AGENT_DIR: agent };

@@ -61,11 +61,12 @@ test("missing repositories fail and an existing task directory is never replaced
   assert.throws(() => cleanup(root, root), /outside/);
 });
 
-test("consumer gets its exact Agent pin and partial preparation is rolled back", (t) => {
+test("consumer fetches its exact Agent release tag and partial preparation is rolled back", (t) => {
   const { root, repo, args } = setup(t);
   const helper = fs.readFileSync(path.resolve(__dirname, "../../../agent/scripts/consumer-source.cjs"), "utf8");
   const agent = repo("agent", { "Cargo.toml": '[workspace.package]\nversion = "0.11.5"\n', "scripts/consumer-source.cjs": helper });
-  git(agent.clone, "tag", "-a", "v0.11.5", "-m", "v0.11.5", agent.revision);
+  git(agent.origin, "tag", "-a", "v0.11.5", "-m", "v0.11.5", agent.revision);
+  assert.throws(() => git(agent.clone, "rev-parse", "refs/tags/v0.11.5"));
   const pin = { schemaVersion: 1, repository: "mhome-ai/agent", version: "0.11.5", commit: agent.revision };
   const cloud = repo("tiger", { "release/sources/agent.json": JSON.stringify(pin) });
   const output = prepare({ ...args, name: "tiger", revision: cloud.revision });
@@ -74,7 +75,7 @@ test("consumer gets its exact Agent pin and partial preparation is rolled back",
   cleanup(output.MHOME_WORK_ROOT, root);
   fs.writeFileSync(path.join(cloud.origin, "release/sources/agent.json"), JSON.stringify({ ...pin, version: "999.0.0" }));
   git(cloud.origin, "add", "."); git(cloud.origin, "commit", "-qm", "invalid pin");
-  assert.throws(() => prepare({ ...args, name: "tiger", revision: git(cloud.origin, "rev-parse", "HEAD") }), /version/);
+  assert.throws(() => prepare({ ...args, name: "tiger", revision: git(cloud.origin, "rev-parse", "HEAD") }), /v999\.0\.0/);
   assert.equal(fs.existsSync(path.join(root, "work/tiger-123-test-1")), false);
   for (const source of [agent, cloud]) assert.equal(git(source.clone, "worktree", "list", "--porcelain").match(/^worktree /gm).length, 1);
 });
