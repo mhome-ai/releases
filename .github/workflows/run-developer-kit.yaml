@@ -1,0 +1,120 @@
+name: Build and Publish Developer Kit
+on:
+  workflow_call:
+    inputs:
+      kit:
+        type: string
+        required: true
+      source_tag:
+        type: string
+        required: true
+      source_commit:
+        type: string
+        required: true
+      cli_version:
+        type: string
+        required: true
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  prepare:
+    runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
+    timeout-minutes: 90
+    steps:
+      - name: Freeze publisher and invocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$HOME/.mhome"
+          git -C "$root/releases" fetch --no-tags origin "$GITHUB_SHA"
+          git -C "$root/releases" show "$GITHUB_SHA:scripts/ci/developer-kit-job.cjs" > "$RUNNER_TEMP/developer-kit-job.cjs"
+          work="$(node "$RUNNER_TEMP/developer-kit-job.cjs" setup prepare none)"
+          node -e 'const fs = require("node:fs"); const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")); fs.writeFileSync(process.argv[1], JSON.stringify(event.inputs), {mode: 0o600});' "$work/invocation.json"
+      - name: Build fixed source without publisher credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$HOME/.mhome/work/developer-kit-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-prepare-none"
+          node "$work/releases/scripts/ci/developer-kit-job.cjs" pack prepare none "$work/invocation.json"
+      - name: Sign and upload immutable candidate
+        shell: bash
+        env:
+          RUNTIME_CATALOG_PRIVATE_KEY_B64: ${{ secrets.RUNTIME_CATALOG_PRIVATE_KEY_B64 }}
+        run: |
+          set -euo pipefail
+          work="$HOME/.mhome/work/developer-kit-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-prepare-none"
+          source "$work/releases/scripts/ci/lib.sh"
+          assume_aws_role "${{ vars.RUNTIME_PUBLISH_ROLE_ARN }}"
+          node "$work/releases/scripts/ci/developer-kit-job.cjs" prepare prepare none "$work/invocation.json"
+          node "$work/releases/scripts/ci/developer-kit-job.cjs" upload prepare none "$work/invocation.json"
+      - name: Clean owned publication files
+        if: always()
+        shell: bash
+        run: node "$RUNNER_TEMP/developer-kit-job.cjs" clean prepare none
+  accept:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: darwin-arm64
+            runner: '["self-hosted","macOS","ARM64","release-macos-primary"]'
+          - platform: darwin-x64
+            runner: '["self-hosted","macOS","ARM64","release-macos-primary"]'
+          - platform: linux-arm64
+            runner: '["self-hosted","Linux","ARM64","release-linux-arm64"]'
+          - platform: linux-x64
+            runner: '["self-hosted","Linux","AMD64","release-linux-amd64"]'
+          - platform: win-x64
+            runner: '["self-hosted","Windows","X64"]'
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    timeout-minutes: 30
+    steps:
+      - name: Freeze publisher and invocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$HOME/.mhome"
+          git -C "$root/releases" fetch --no-tags origin "$GITHUB_SHA"
+          git -C "$root/releases" show "$GITHUB_SHA:scripts/ci/developer-kit-job.cjs" > "$RUNNER_TEMP/developer-kit-job.cjs"
+          work="$(node "$RUNNER_TEMP/developer-kit-job.cjs" setup accept ${{ matrix.platform }})"
+          node -e 'const fs = require("node:fs"); const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")); fs.writeFileSync(process.argv[1], JSON.stringify(event.inputs), {mode: 0o600});' "$work/invocation.json"
+      - name: Exercise public installer with no system Node on PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$HOME/.mhome/work/developer-kit-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-accept-${{ matrix.platform }}"
+          node "$work/releases/scripts/ci/developer-kit-job.cjs" accept accept '${{ matrix.platform }}' "$work/invocation.json"
+      - name: Clean owned publication files
+        if: always()
+        shell: bash
+        run: node "$RUNNER_TEMP/developer-kit-job.cjs" clean accept ${{ matrix.platform }}
+  promote:
+    needs: [prepare, accept]
+    runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
+    timeout-minutes: 30
+    steps:
+      - name: Freeze publisher and invocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$HOME/.mhome"
+          git -C "$root/releases" fetch --no-tags origin "$GITHUB_SHA"
+          git -C "$root/releases" show "$GITHUB_SHA:scripts/ci/developer-kit-job.cjs" > "$RUNNER_TEMP/developer-kit-job.cjs"
+          work="$(node "$RUNNER_TEMP/developer-kit-job.cjs" setup promote none)"
+          node -e 'const fs = require("node:fs"); const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")); fs.writeFileSync(process.argv[1], JSON.stringify(event.inputs), {mode: 0o600});' "$work/invocation.json"
+      - name: Promote index after every platform passed
+        shell: bash
+        env:
+          RUNTIME_CATALOG_PRIVATE_KEY_B64: ${{ secrets.RUNTIME_CATALOG_PRIVATE_KEY_B64 }}
+        run: |
+          set -euo pipefail
+          work="$HOME/.mhome/work/developer-kit-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-promote-none"
+          source "$work/releases/scripts/ci/lib.sh"
+          assume_aws_role "${{ vars.RUNTIME_PUBLISH_ROLE_ARN }}"
+          node "$work/releases/scripts/ci/developer-kit-job.cjs" promote promote none "$work/invocation.json"
+      - name: Clean owned publication files
+        if: always()
+        shell: bash
+        run: node "$RUNNER_TEMP/developer-kit-job.cjs" clean promote none

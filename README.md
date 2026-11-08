@@ -272,3 +272,8 @@ prove that a missing GitHub secret is inherited from another repository.
 ```sh
 node --test scripts/ci/developer-sdk.test.cjs scripts/ci/workflow-contract.test.js
 ```
+
+The `developer-kit.yaml` dispatch entry calls `run-developer-kit.yaml` at the same
+commit. AWS trust names that reusable workflow, so its `job_workflow_ref` claim is
+present; direct dispatch jobs cannot satisfy that trust condition. All platform
+jobs remain self-hosted.

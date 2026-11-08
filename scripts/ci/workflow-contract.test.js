@@ -331,11 +331,14 @@ test("Plugin builds and publishes on the existing runner with local artifact ver
 });
 
 test("Developer Kit promotes one index only after every platform exercises the public installer", () => {
-  const workflow = read(".github/workflows/developer-kit.yaml");
+  const entry = read(".github/workflows/developer-kit.yaml");
+  assert.match(entry, /uses: \.\/\.github\/workflows\/run-developer-kit\.yaml/);
+  const workflow = read(".github/workflows/run-developer-kit.yaml");
+  assert.match(workflow, /workflow_call:/);
   assert.match(workflow, /needs: \[prepare, accept\]/);
   for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win-x64"]) assert.match(workflow, new RegExp(`platform: ${platform}`));
   assert.match(workflow, /developer-kit-job\.cjs/);
-  assert.match(workflow, /options: \[ui, extension, wave\]/);
+  assert.match(entry, /options: \[ui, extension, wave\]/);
   assert.doesNotMatch(workflow, /CARD_DEVKIT_SOURCE_READ_TOKEN/);
   const source = read("scripts/ci/developer-kit.cjs");
   assert.doesNotMatch(source, /gh.*run|validate_release_tag\.yml/);
@@ -357,7 +360,7 @@ test("Plugin SDK publication is independent from Kit signing and consumes frozen
 
 
 test("Developer publication inputs are read as event data without shell interpolation", () => {
-  for (const name of ["developer-kit.yaml", "developer-sdk.yaml"]) {
+  for (const name of ["run-developer-kit.yaml", "developer-sdk.yaml"]) {
     const workflow=read(`.github/workflows/${name}`);
     assert.doesNotMatch(workflow,/\$\{\{ toJSON\(inputs\) \}\}/);
     assert.match(workflow,/GITHUB_EVENT_PATH/);
