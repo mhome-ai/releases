@@ -3,8 +3,8 @@ const sync = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { execFileSync } = require("node:child_process");
-const config = require("./card-devkit-runtime.json");
-const BASE = "https://install.mhome.ai/card-devkit";
+const config = require("./developer-kit-runtime.json");
+const BASE = "https://install.mhome.ai/devkits";
 const sha = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
 const run = (command, args, options = {}) =>
   execFileSync(command, args, {
@@ -84,7 +84,7 @@ async function sign(value, directory, existing) {
       "-x",
       `${file}.minisig`,
       "-t",
-      "MeowLink Card DevKit",
+      "MeowLink Developer Kit",
     ]);
     const signature = await fs.readFile(`${file}.minisig`, "utf8");
     verify(payload, signature, directory);
@@ -109,16 +109,19 @@ async function existing(url) {
     );
   return Buffer.from(await response.arrayBuffer());
 }
-async function verifySource(directory, { command = run } = {}) {
-  const tag = process.env.SOURCE_TAG,
-    commit = process.env.SOURCE_COMMIT;
+const SOURCE = {ui:{repository:"pallas-cat",manifest:"tools/card-devkit/package.json"},
+  extension:{repository:"integration",manifest:"tools/devkit/package.json"},
+  wave:{repository:"meow-wave",manifest:"tools/devkit/package.json"}};
+function kitId(kit) { if (!Object.hasOwn(SOURCE,kit)) throw new Error("Unknown developer Kit"); return kit; }
+async function verifySource(directory, { kit, tag, commit, command = run } = {}) {
+  kitId(kit);
   const version = JSON.parse(
     await fs.readFile(
-      path.join(directory, "tools/card-devkit/package.json")
+      path.join(directory, SOURCE[kit].manifest)
     )
   ).version;
   if (
-    tag !== `card-devkit-v${exact(version)}` ||
+    tag !== `kit-${kit}-v${exact(version)}` ||
     !/^[a-f0-9]{40}$/.test(commit || "") ||
     command("git", ["-C", directory, "rev-parse", "HEAD"]) !== commit
   )
@@ -153,14 +156,16 @@ async function prepare(
     command = run,
     existingEnvelope = existing,
     signer = sign,
+    cliVersion, orchestratorCommit, nodeKeyring,
   } = {}
 ) {
   const built = JSON.parse(
-    await fs.readFile(path.join(directory, "devkit-build.json"))
+    await fs.readFile(path.join(directory, "kit-build.json"))
   );
+  kitId(built.kit);
   exact(built.version);
-  exact(process.env.CARD_ACCEPTANCE_CLI_VERSION);
-  if (!built.source || !/^[a-f0-9]{40}$/.test(process.env.GITHUB_SHA || ""))
+  exact(cliVersion);
+  if (!built.source || !/^[a-f0-9]{40}$/.test(orchestratorCommit || ""))
     throw new Error("Missing frozen source provenance");
   const nodeBase = `https://nodejs.org/dist/v${config.nodeVersion}`;
   const sums = await downloadFile(`${nodeBase}/SHASUMS256.txt`);
@@ -169,11 +174,11 @@ async function prepare(
     path.join(directory, "node-SHASUMS256.txt.sig"),
     await downloadFile(`${nodeBase}/SHASUMS256.txt.sig`)
   );
-  if (!process.env.NODE_RELEASE_KEYRING)
+  if (!nodeKeyring)
     throw new Error("Configure the pinned official Node release keyring");
   command("gpgv", [
     "--keyring",
-    process.env.NODE_RELEASE_KEYRING,
+    nodeKeyring,
     path.join(directory, "node-SHASUMS256.txt.sig"),
     path.join(directory, "node-SHASUMS256.txt"),
   ]);
@@ -194,7 +199,7 @@ async function prepare(
     await fs.writeFile(upstream, bytes);
     const output = `node-${platform}.tar.gz`;
     command("python3", [
-      path.join(__dirname, "card-node-archive.py"),
+      path.join(__dirname, "developer-node-archive.py"),
       upstream,
       path.join(directory, output),
     ]);
@@ -204,8 +209,14 @@ async function prepare(
       nodeVersion: config.nodeVersion,
       npmVersion: config.npmVersion,
       minimumOs: pin.minimumOs,
+      payload: (() => {
+        const filename = built.payloads?.[platform] || "kit.tar.gz";
+        const file = built.files.find(item => item.path === filename);
+        if (!file) throw new Error(`Missing Kit payload: ${platform}`);
+        return {url:`${BASE}/${built.kit}/${built.version}/${filename}`,size:file.size,sha256:file.sha256};
+      })(),
       asset: {
-        url: `${BASE}/${built.version}/${output}`,
+        url: `${BASE}/${built.kit}/${built.version}/${output}`,
         size: asset.size,
         sha256: asset.sha256,
       },
@@ -220,7 +231,7 @@ async function prepare(
     const assetPlatform = platform === "win-x64" ? "windows-x64" : platform;
     const cliAsset = client?.assets?.[assetPlatform];
     if (
-      client?.version !== process.env.CARD_ACCEPTANCE_CLI_VERSION ||
+      client?.version !== cliVersion ||
       !cliAsset
     )
       throw new Error(`Publish the requested meow CLI on ${platform} first`);
@@ -241,35 +252,31 @@ async function prepare(
     "node-SHASUMS256.txt.sig",
     "acceptance.json",
   ]);
-  const devkit = files.find((file) => file.path === "devkit.tar.gz");
   const manifest = {
     schemaVersion: 1,
-    kind: "meow.card.devkit",
+    kind: "meow.developer-kit",
+    kit: built.kit,
     version: built.version,
     workerProtocol: built.workerProtocol,
     minimumCliVersion: built.minimumCliVersion,
     source: built.source,
-    orchestratorCommit: process.env.GITHUB_SHA,
-    devkit: {
-      url: `${BASE}/${built.version}/devkit.tar.gz`,
-      size: devkit.size,
-      sha256: devkit.sha256,
-    },
+    orchestratorCommit: orchestratorCommit,
     platforms,
     files,
   };
-  const prior = await existingEnvelope(`${BASE}/${built.version}/devkit.json`);
+  const prior = await existingEnvelope(`${BASE}/${built.kit}/${built.version}/kit.json`);
   const bytes = await signer(manifest, directory, prior);
-  await fs.writeFile(path.join(directory, "devkit.json"), bytes);
+  await fs.writeFile(path.join(directory, "kit.json"), bytes);
   return manifest;
 }
 function promoteIndex(index, entry) {
   if (
     index.schemaVersion !== 1 ||
-    index.kind !== "meow.card.devkit.index" ||
+    index.kind !== "meow.developer-kit.index" ||
     !Array.isArray(index.versions)
   )
     throw new Error("Invalid DevKit index");
+  kitId(index.kit);
   [...index.versions, entry].forEach((item) => exact(item.version));
   const old = index.versions.find((item) => item.version === entry.version);
   if (old && JSON.stringify(old) !== JSON.stringify(entry))
@@ -282,7 +289,8 @@ function promoteIndex(index, entry) {
   });
   return {
     schemaVersion: 1,
-    kind: "meow.card.devkit.index",
+    kind: "meow.developer-kit.index",
+    kit:index.kit,
     latest: versions.at(-1).version,
     versions,
   };
@@ -297,22 +305,22 @@ async function publish(
     signer = sign,
   } = {}
 ) {
-  const bucket =
-    process.env.INSTALL_DISTRIBUTION_BUCKET || "mhome-install-distribution";
-  const manifestBytes = await fs.readFile(path.join(directory, "devkit.json"));
+  const bucket = "mhome-install-distribution";
+  const manifestBytes = await fs.readFile(path.join(directory, "kit.json"));
   const manifest = verifyEnvelope(manifestBytes, directory);
+  kitId(manifest.kit);
   exact(manifest.version);
   if (
     manifest.schemaVersion !== 1 ||
-    manifest.kind !== "meow.card.devkit" ||
+    manifest.kind !== "meow.developer-kit" ||
     !manifest.files?.length
   )
     throw new Error("Invalid DevKit manifest");
-  const prefix = `card-devkit/${manifest.version}/`;
+  const prefix = `devkits/${manifest.kit}/${manifest.version}/`;
   const files = [
     ...manifest.files,
     {
-      path: "devkit.json",
+      path: "kit.json",
       size: manifestBytes.length,
       sha256: sha(manifestBytes),
     },
@@ -370,7 +378,7 @@ async function publish(
         await fs.unlink(previous);
       }
     }
-    const response = await fetcher(`${BASE}/${manifest.version}/${file.path}`, {
+    const response = await fetcher(`${BASE}/${manifest.kit}/${manifest.version}/${file.path}`, {
       signal: AbortSignal.timeout(300000),
       cache: "no-store",
     });
@@ -386,7 +394,8 @@ async function publish(
   const indexFile = path.join(directory, ".index.json");
   let index = {
       schemaVersion: 1,
-      kind: "meow.card.devkit.index",
+      kind: "meow.developer-kit.index",
+      kit:manifest.kit,
       versions: [],
     },
     etag,
@@ -399,7 +408,7 @@ async function publish(
         "--bucket",
         bucket,
         "--key",
-        "card-devkit/index.json",
+        `devkits/${manifest.kit}/index.json`,
         indexFile,
       ])
     );
@@ -411,6 +420,7 @@ async function publish(
     if (!/NoSuchKey|\(404\)/.test(String(error.stderr || error.message)))
       throw error;
   }
+  if(index.kit !== manifest.kit) throw new Error("Published index belongs to another Kit");
   const next = promoteIndex(index, {
     version: manifest.version,
     manifestSha256: sha(manifestBytes),
@@ -426,7 +436,7 @@ async function publish(
     "--bucket",
     bucket,
     "--key",
-    "card-devkit/index.json",
+    `devkits/${manifest.kit}/index.json`,
     "--body",
     indexFile,
     "--content-type",
@@ -435,7 +445,7 @@ async function publish(
     "no-cache",
     ...(etag ? ["--if-match", etag] : ["--if-none-match", "*"]),
   ]);
-  const response = await fetcher(`${BASE}/index.json`, {
+  const response = await fetcher(`${BASE}/${manifest.kit}/index.json`, {
     signal: AbortSignal.timeout(30000),
     cache: "no-store",
   });
@@ -448,7 +458,7 @@ async function publish(
   return next;
 }
 module.exports = {
-  verifySource,
+  SOURCE, kitId, verifySource,
   prepare,
   publish,
   promoteIndex,
@@ -462,18 +472,13 @@ module.exports = {
   sign,
 };
 if (require.main === module) {
-  const action = {
-    "verify-source": verifySource,
-    prepare,
-    upload: publish,
-    promote: (directory) => publish(directory, { promote: true }),
-  }[process.argv[2]];
-  if (!action)
-    throw new Error("Expected verify-source, prepare, upload or promote");
-  action(process.argv[3])
-    .then((value) => console.log(JSON.stringify(value)))
-    .catch((error) => {
-      console.error(error.message);
-      process.exitCode = 1;
-    });
+  const [action,directory,...args] = process.argv.slice(2);
+  const execute = {
+    "verify-source":() => verifySource(directory,{kit:args[0],tag:args[1],commit:args[2]}),
+    prepare:() => prepare(directory,{cliVersion:args[0],orchestratorCommit:args[1],nodeKeyring:args[2]}),
+    upload:() => publish(directory),
+    promote:() => publish(directory,{promote:true}),
+  }[action];
+  if (!execute) throw new Error("Expected verify-source, prepare, upload or promote");
+  execute().then(value=>console.log(JSON.stringify(value))).catch(error=>{console.error(error.message);process.exitCode=1;});
 }

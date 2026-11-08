@@ -167,79 +167,72 @@ node --test scripts/ci/desktop-release.test.js scripts/ci/publish-desktop-update
 # For a development worktree, set DESKTOP_TEST_BAYCAT to that Baycat checkout.
 ```
 
-## Card DevKit distribution
+## Developer Kit distribution
 
-`card-devkit.yaml` independently publishes the tools behind `meow customize card`.
-It consumes an exact `card-devkit-vX.Y.Z` tag and full commit from Pallas, plus an
-already published Meow CLI version on all five supported platforms. DevKit and App
-versions are independent. The workflow validates the frozen DevKit directly; it
-does not search historical App workflow logs. It never deploys the App website.
+`developer-kit.yaml` publishes UI, Extension and experimental Wave tooling behind
+`meow make`. Source logic stays in Pallas, Integration and Wave respectively;
+Releases freezes, signs, verifies and distributes it. A release selects an exact
+`kit-<ui|extension|wave>-vX.Y.Z` source tag/full commit and an already published
+meow CLI version on all five supported platforms. No Kit release deploys the App
+website or distributes the Wave firmware SDK.
 
-The public root is `https://install.mhome.ai/card-devkit/`, in
-`mhome-install-distribution`, separate from the App website bucket. Each version
-has one portable, preinstalled JavaScript DevKit, five normalized Node/npm archives,
-public metadata/types/docs and a signed `devkit.json`. The manifest fixes the
-source/orchestrator commits, worker protocol, minimum CLI version, OS requirements,
-and every artifact URL, size and SHA-256. `acceptance.json` freezes the exact signed
-native Client artifacts used for acceptance. The dependency inventory and package
-license files travel with the release.
+The root is `https://install.mhome.ai/devkits/<kit>/`, in the existing
+`mhome-install-distribution` bucket. Each immutable version contains signed
+`kit.json`, exact preinstalled worker payloads and five normalized Node/npm
+archives. UI/Wave share portable payloads; Extension carries each platform's locked
+native esbuild dependency. The manifest binds Kit identity, source/publisher
+commits, worker protocol, minimum CLI/OS, and URL/size/SHA-256 of every asset.
+`acceptance.json` freezes signed, released native CLI artifacts for verification.
 
-`card-devkit-runtime.json` pins official Node/npm versions and upstream checksums.
-The publisher verifies Node's signed SHASUMS using the runner's pinned official
-release keyring, then checks each archive against the committed checksum before
-repacking. Dependency installation uses the committed npm lock with optional native
-dependencies, install scripts and bin links disabled. Archive generation rejects
-native addons and external links. The private Node/npm and compiler installation
-requires no npm registry access on the consumer machine.
+`developer-kit-runtime.json` pins official Node/npm versions and upstream hashes.
+The publisher verifies Node's signed SHASUMS with the maintained local official
+keyring. Package installation uses committed locks with lifecycle scripts and bin
+links disabled. Every archive rejects links/special files and preserves required
+executable bits. Consumers do not npm-install the Kit itself or need system Node.
 
-The workflow has three phases:
+The workflow first builds frozen source without publisher credentials, signs and
+uploads immutable candidate files, and leaves the index unchanged. Each supported
+platform then runs the real public installer with an empty system PATH. UI checks
+both bases, type checking, build/verify and watched Preview/stop. Extension checks
+independent TS validation, ordinary dependency installation, actual behavior tests
+and builds. Wave checks the installed generator/checker against a clearly labeled
+recorded compiler fixture; it does not claim live Hub or device/SDK acceptance.
+Only after every job succeeds does promotion recheck the source tag and public
+bytes and conditionally update that Kit's signed index using its ETag.
 
-1. Freeze source and publisher, test the standalone package, prepare/sign, and
-   upload immutable candidate files without changing the public version index.
-2. On each supported platform, download the frozen released Meow CLI and exercise
-   `toolchain install`, `init`, `deps install`, metadata, build, verify, preview
-   hot reload, stop and uninstall in an isolated workdir with an empty system PATH.
-   The macOS x64 job uses the existing Apple Silicon runner with Rosetta; the
-   selected CLI and managed Node must actually report x64.
-3. After every platform passes, recheck the source tag and all publicly served
-   bytes, then conditionally update the single signed `index.json` using its ETag.
+Exact-version install works before promotion for acceptance. A failed candidate
+never enters the index. Identical retries preserve original signed bytes; changed
+source/publisher/artifacts require a new Kit version. Retained historical Card
+artifacts are immutable; the active workflow and CLI use only the new distribution.
+Node downloads are shared by content in the client cache across Kits.
 
-A failed candidate never enters the index. Exact-version installation intentionally
-works before index promotion so the actual public installer can be tested. Candidate
-URLs remain immutable: identical retries reuse the original signed bytes; changed
-source, publisher, CLI inventory or artifacts require a new DevKit version. There
-is no overwrite, compatibility alias, platform-specific index or automatic upgrade.
+The existing Runtime Minisign trust key remains authoritative. No unsigned
+installer flag or environment-based public-key override is added. Workflow inputs,
+work paths, source identities, selected CLI and keyring path travel through explicit
+arguments/private invocation JSON. The only step-specific secret environment is
+`RUNTIME_CATALOG_PRIVATE_KEY_B64`; standard GitHub/AWS tool credentials remain.
 
-The signed JSON envelope stores exact payload bytes and their Minisign signature in
-one object. It uses the existing official Runtime distribution trust key, also pinned
-by the Meow CLI. Do not introduce an unsigned installer flag or an environment-based
-public-key override. Local unit fixtures use a separate test-only public key.
+Runner/release prerequisites:
 
-Runner/publication prerequisites:
-
-- Existing `~/.mhome/releases` and `~/.mhome/pallas-cat` repositories; workflows fetch
-  exact objects into owned worktrees and never clone source repositories.
-- Existing macOS ARM64 + Rosetta, Linux ARM64/x64 and Windows x64 self-hosted runners.
-  All acceptance runners need Node to run the test recipe, Minisign and tar;
-  consumer subprocesses receive an empty PATH and use only downloaded tools.
-- Publisher: Node, npm, Python 3, Git, curl, AWS CLI, Minisign and `gpgv`.
-  `NODE_RELEASE_KEYRING` is the repository/org variable naming a maintained local
-  keyring of trusted official Node release keys. No keys are fetched implicitly.
-- `RUNTIME_CATALOG_PRIVATE_KEY_B64` is the existing official Runtime signing key.
-  `CARD_DEVKIT_PUBLISH_ROLE_ARN` grants OIDC PutObject/GetObject for `card-devkit/*`
-  and ListBucket for existence checks. Secrets never enter release files.
-- Public missing files must return 404; 403/auth/network errors are not treated as
-  an empty distribution. Public JSON/text/tar downloads need correct MIME and CORS.
-  Immutable version files use long-lived caching; the index uses `no-cache`.
-- Publish the new Meow CLI first, then dispatch this workflow. Meow source checks
-  and App release checks do not depend on this DevKit having been published.
-
-Source-level tests:
+- Existing flat `~/.mhome/releases` and relevant source repositories with their
+  origins, provisioned on the publisher; fetch exact objects into owned worktrees,
+  never clone implicitly. Wave's source remote/release preparation is still a
+  prerequisite; implementing its Kit does not create a repository or issue tags.
+- Existing macOS ARM64 + Rosetta, Linux ARM64/x64 and Windows x64 self-hosted
+  runners, with Node for the recipe, Minisign and tar. Product subprocesses use
+  only the downloaded managed tools.
+- Publisher Node/npm, Python 3, Git, AWS CLI, Minisign and gpgv. The existing
+  `NODE_RELEASE_KEYRING` GitHub variable supplies the explicit keyring argument.
+- The existing `CARD_DEVKIT_PUBLISH_ROLE_ARN` GitHub variable is passed as a
+  credential setup argument. Its IAM policy must cover `devkits/*` Put/Get and
+  bucket existence checks before publication; this source change does not alter
+  cloud permissions. Secrets never enter artifacts or invocation files.
+- Publish Script's required testing export and refresh Integration's root/Kit npm
+  pins and locks before releasing Extension. Publish the new meow CLI first.
+  Deploy new Hub/Lion contract support before live Wave contract acquisition.
+- Missing public objects must return 404; 403/network failures are errors. Version
+  files use immutable caching, indices use no-cache. MIME/CORS remain correct.
 
 ```sh
-node --test scripts/ci/card-devkit.test.cjs scripts/ci/workflow-contract.test.js
+node --test scripts/ci/developer-kit.test.cjs scripts/ci/workflow-contract.test.js
 ```
-
-This workflow is independent of native product `r` → `t` tag coordination. DevKit
-source uses its own explicit immutable tag; the workflow's fixed GitHub SHA identifies
-its publisher. Do not turn an App deployment into the DevKit publication trigger.

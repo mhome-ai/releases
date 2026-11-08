@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { publish, promoteIndex, verifySource } = require("./card-devkit.cjs");
+const { publish, promoteIndex, verifySource } = require("./developer-kit.cjs");
 const hash = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
 
 test("index promotion preserves exact releases and cannot roll latest backwards", () => {
@@ -14,7 +14,7 @@ test("index promotion preserves exact releases and cannot roll latest backwards"
     sha256: "a",
   };
   const index = promoteIndex(
-    { schemaVersion: 1, kind: "meow.card.devkit.index", versions: [] },
+    { schemaVersion: 1, kind: "meow.developer-kit.index", kit:"ui", versions: [] },
     entry
   );
   assert.equal(
@@ -29,7 +29,7 @@ test("index promotion preserves exact releases and cannot roll latest backwards"
   assert.throws(
     () =>
       promoteIndex(
-        { schemaVersion: 1, kind: "meow.card.devkit.index", versions: [] },
+        { schemaVersion: 1, kind: "meow.developer-kit.index", kit:"ui", versions: [] },
         { version: "latest" }
       ),
     /Expected exact version/
@@ -40,14 +40,15 @@ test("publish verifies public bytes before CAS index promotion and refuses occup
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "card-devkit-release-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const bytes = Buffer.from("standalone kit");
-  fs.writeFileSync(path.join(root, "devkit.tar.gz"), bytes);
+  fs.writeFileSync(path.join(root, "kit.tar.gz"), bytes);
   const manifest = {
     schemaVersion: 1,
-    kind: "meow.card.devkit",
+    kind: "meow.developer-kit",
+    kit:"ui",
     version: "1.6.0",
-    files: [{ path: "devkit.tar.gz", size: bytes.length, sha256: hash(bytes) }],
+    files: [{ path: "kit.tar.gz", size: bytes.length, sha256: hash(bytes) }],
   };
-  fs.writeFileSync(path.join(root, "devkit.json"), JSON.stringify(manifest));
+  fs.writeFileSync(path.join(root, "kit.json"), JSON.stringify(manifest));
   const objects = new Map(),
     writes = [],
     reads = [];
@@ -68,7 +69,7 @@ test("publish verifies public bytes before CAS index promotion and refuses occup
         hash(objects.get(key))
       );
     if (key.endsWith("index.json"))
-      assert(reads.includes("card-devkit/1.6.0/devkit.json"));
+      assert(reads.includes("devkits/ui/1.6.0/kit.json"));
     objects.set(key, fs.readFileSync(args[args.indexOf("--body") + 1]));
     writes.push(key);
     return "{}";
@@ -91,7 +92,7 @@ test("publish verifies public bytes before CAS index promotion and refuses occup
     signer: async (value) => Buffer.from(JSON.stringify(value)),
     promote: true,
   });
-  assert.equal(writes.at(-1), "card-devkit/index.json");
+  assert.equal(writes.at(-1), "devkits/ui/index.json");
   await publish(root, {
     command,
     fetcher,
@@ -118,7 +119,7 @@ test("publish verifies public bytes before CAS index promotion and refuses occup
   assert.equal(writes.length, before);
   corruptPublic = false;
   objects.set(
-    "card-devkit/1.6.0/devkit.tar.gz",
+    "devkits/ui/1.6.0/kit.tar.gz",
     Buffer.from("different release")
   );
   await assert.rejects(
@@ -134,46 +135,24 @@ test("publish verifies public bytes before CAS index promotion and refuses occup
 
 test("DevKit source identity is independent of App version and rejects a dirty checkout", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "card-devkit-source-"));
-  const oldTag = process.env.SOURCE_TAG,
-    oldCommit = process.env.SOURCE_COMMIT;
-  t.after(() => {
-    fs.rmSync(root, { recursive: true, force: true });
-    if (oldTag === undefined) delete process.env.SOURCE_TAG;
-    else process.env.SOURCE_TAG = oldTag;
-    if (oldCommit === undefined) delete process.env.SOURCE_COMMIT;
-    else process.env.SOURCE_COMMIT = oldCommit;
-  });
+  t.after(() => fs.rmSync(root,{recursive:true,force:true}));
   fs.mkdirSync(path.join(root, "tools/card-devkit"), { recursive: true });
   fs.writeFileSync(path.join(root, "package.json"), '{"version":"1.6.0"}');
   fs.writeFileSync(
     path.join(root, "tools/card-devkit/package.json"),
     '{"version":"2.0.0"}'
   );
-  process.env.SOURCE_TAG = "card-devkit-v2.0.0";
-  process.env.SOURCE_COMMIT = "a".repeat(40);
-  const command = (_, args) =>
-    args.includes("rev-parse") ? process.env.SOURCE_COMMIT : "";
-  assert.equal(
-    (await verifySource(root, { command })).tag,
-    "card-devkit-v2.0.0"
-  );
-  process.env.SOURCE_TAG = "v1.6.0";
-  await assert.rejects(verifySource(root, { command }), /must match/);
-  process.env.SOURCE_TAG = "card-devkit-v2.0.0";
-  await assert.rejects(
-    verifySource(root, {
-      command: (_, args) =>
-        args.includes("rev-parse")
-          ? process.env.SOURCE_COMMIT
-          : " M tracked-file",
-    }),
-    /dirty/
-  );
+  const options = {kit:"ui",tag:"kit-ui-v2.0.0",commit:"a".repeat(40)};
+  const command = (_,args) => args.includes("rev-parse") ? options.commit : "";
+  assert.equal((await verifySource(root,{...options,command})).tag,options.tag);
+  await assert.rejects(verifySource(root,{...options,tag:"v1.6.0",command}),/must match/);
+  await assert.rejects(verifySource(root,{...options,command:(_,args)=>args.includes("rev-parse")?options.commit:" M tracked-file"}),/dirty/);
+
 });
 
 test("signed envelopes reject tampering and exact retries preserve signature bytes", async (t) => {
   const { execFileSync } = require("node:child_process");
-  const { sign, decode, config } = require("./card-devkit.cjs");
+  const { sign, decode, config } = require("./developer-kit.cjs");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "card-devkit-signature-"));
   const oldKey = config.publicKey,
     oldSecret = process.env.RUNTIME_CATALOG_PRIVATE_KEY_B64;
@@ -206,7 +185,8 @@ test("signed envelopes reject tampering and exact retries preserve signature byt
     .toString("base64");
   const value = {
     schemaVersion: 1,
-    kind: "meow.card.devkit",
+    kind: "meow.developer-kit",
+    kit:"ui",
     version: "2.0.0",
   };
   const first = await sign(value, root);
@@ -237,7 +217,7 @@ with tarfile.open(sys.argv[1],"w:gz") as archive:
 `,
     path.join(root, "upstream.tar.gz"),
   ]);
-  const normalize = path.join(__dirname, "card-node-archive.py");
+  const normalize = path.join(__dirname, "developer-node-archive.py");
   execFileSync("python3", [
     normalize,
     path.join(root, "upstream.tar.gz"),
@@ -275,28 +255,10 @@ with tarfile.open(sys.argv[1],"w:gz") as archive:
 
 test("preparation freezes signed CLI assets for every platform, including the Windows asset key", async (t) => {
   const { execFileSync } = require("node:child_process");
-  const { prepare, config } = require("./card-devkit.cjs");
+  const { prepare, config } = require("./developer-kit.cjs");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "card-devkit-prepare-"));
   const old = JSON.parse(JSON.stringify(config));
-  const names = [
-    "CARD_ACCEPTANCE_CLI_VERSION",
-    "GITHUB_SHA",
-    "NODE_RELEASE_KEYRING",
-  ];
-  const environment = Object.fromEntries(
-    names.map((name) => [name, process.env[name]])
-  );
-  t.after(() => {
-    Object.assign(config, old);
-    for (const name of names) {
-      if (environment[name] === undefined) delete process.env[name];
-      else process.env[name] = environment[name];
-    }
-    fs.rmSync(root, { recursive: true, force: true });
-  });
-  process.env.CARD_ACCEPTANCE_CLI_VERSION = "2.0.0";
-  process.env.GITHUB_SHA = "b".repeat(40);
-  process.env.NODE_RELEASE_KEYRING = "pinned-keyring";
+  t.after(() => {Object.assign(config,old);fs.rmSync(root,{recursive:true,force:true});});
   execFileSync(
     "minisign",
     [
@@ -317,15 +279,16 @@ test("preparation freezes signed CLI assets for every platform, including the Wi
   const kit = Buffer.from("kit"),
     node = Buffer.from("upstream node"),
     signatures = new Map();
-  fs.writeFileSync(path.join(root, "devkit.tar.gz"), kit);
+  fs.writeFileSync(path.join(root, "kit.tar.gz"), kit);
   fs.writeFileSync(
-    path.join(root, "devkit-build.json"),
+    path.join(root, "kit-build.json"),
     JSON.stringify({
+      kit:"ui",
       version: "2.0.0",
-      source: { tag: "card-devkit-v2.0.0", commit: "a".repeat(40) },
+      source: { tag: "kit-ui-v2.0.0", commit: "a".repeat(40) },
       workerProtocol: 1,
       minimumCliVersion: "2.0.0",
-      files: [{ path: "devkit.tar.gz", size: kit.length, sha256: hash(kit) }],
+      files: [{ path: "kit.tar.gz", size: kit.length, sha256: hash(kit) }],
     })
   );
   let sums = "";
@@ -365,6 +328,7 @@ test("preparation freezes signed CLI assets for every platform, including the Wi
   }
   const commands = [];
   const manifest = await prepare(root, {
+    cliVersion:"2.0.0",orchestratorCommit:"b".repeat(40),nodeKeyring:"pinned-keyring",
     downloadFile: async (url) => {
       const pathname = new URL(url).pathname;
       if (signatures.has(pathname)) return signatures.get(pathname);
@@ -392,4 +356,13 @@ test("preparation freezes signed CLI assets for every platform, including the Wi
     "https://example.invalid/win-x64.tar.gz"
   );
   assert(manifest.files.some((file) => file.path === "acceptance.json"));
+});
+
+
+test("publication binds frozen commits to the canonical source repository",()=>{
+ const {assertOrigin}=require('./developer-kit-job.cjs');
+ for(const origin of ['git@github.com:mhome-ai/script.git','ssh://git@github.com/mhome-ai/script.git','https://github.com/mhome-ai/script.git'])
+  assert.doesNotThrow(()=>assertOrigin('/source','script',()=>origin));
+ for(const origin of ['https://github.com/other/script.git','https://example.invalid/mhome-ai/script.git'])
+  assert.throws(()=>assertOrigin('/source','script',()=>origin),/Expected the mhome-ai/);
 });
