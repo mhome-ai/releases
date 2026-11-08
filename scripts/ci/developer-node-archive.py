@@ -50,5 +50,6 @@ with output.open("wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw
             info.uid = info.gid = info.mtime = 0
             info.uname = info.gname = ""
             info.pax_headers = {}
-            info.mode = 0o755 if info.isdir() or info.issym() or info.name in {"bin/node", "node.exe"} else 0o644
+            info.mode = 0o755 if (info.isdir() or info.issym() or info.mode & 0o111
+                                  or info.name in {"bin/node", "node.exe"}) else 0o644
             archive.addfile(info, io.BytesIO(body) if info.isfile() else None)

@@ -13,6 +13,12 @@ function assertOrigin(directory,repository,command=run) {
   if(value!==`https://github.com/mhome-ai/${repository}`)
     throw new Error(`Expected the mhome-ai/${repository} source origin`);
 }
+function verifySourceTag(directory,repository,tag,commit,command=run) {
+  assertOrigin(directory,repository,command);
+  command('git',['-C',directory,'fetch','--no-tags','origin',`refs/tags/${tag}`]);
+  if(command('git',['-C',directory,'rev-parse','FETCH_HEAD^{commit}'])!==commit)
+    throw new Error('Source tag moved');
+}
 function workPath(phase,platform) {
   for(const value of [process.env.GITHUB_RUN_ID,process.env.GITHUB_RUN_ATTEMPT])
     if(!/^\d+$/.test(value || ''))throw new Error('A GitHub invocation is required');
@@ -48,9 +54,7 @@ async function main() {
  if(action==='pack') {
    const original=path.join(root,repository),source=path.join(work,repository);
    if(!sync.existsSync(path.join(original,'.git')))throw new Error(`Provision ${repository} on this runner first`);
-   assertOrigin(original,repository);
-   run('git',['-C',original,'fetch','--no-tags','origin',`refs/tags/${tag}`]);
-   if(run('git',['-C',original,'rev-parse','FETCH_HEAD^{commit}'])!==commit)throw new Error('Source tag moved');
+   verifySourceTag(original,repository,tag,commit);
    run('git',['-C',original,'worktree','add','--detach',source,commit]);
    const {pack}=await import('./developer-kit-pack.mjs');
    await pack(kit,source,artifacts,tag,commit);
@@ -59,6 +63,9 @@ async function main() {
  } else if(action==='upload') await publisher.publish(artifacts);
  else if(action==='accept') await require('./developer-kit-accept.cjs').accept(kit,version,platform,path.join(work,'acceptance'));
  else if(action==='promote') {
+   // Platform checks can take time. Reject a deleted/moved remote source tag
+   // before making this candidate discoverable, even if its old signature is valid.
+   verifySourceTag(path.join(root,repository),repository,tag,commit);
    await fs.mkdir(artifacts);
    const bytes=await publisher.download(`${publisher.BASE}/${kit}/${version}/kit.json`);
    const manifest=publisher.decode(bytes,artifacts);
@@ -68,4 +75,4 @@ async function main() {
  } else throw new Error('Unknown publication action');
 }
 if(require.main===module)main().catch(error=>{console.error(error.message);process.exitCode=1;});
-module.exports={workPath,assertOrigin};
+module.exports={workPath,assertOrigin,verifySourceTag};

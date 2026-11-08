@@ -193,7 +193,9 @@ executable bits. Consumers do not npm-install the Kit itself or need system Node
 The workflow first builds frozen source without publisher credentials, signs and
 uploads immutable candidate files, and leaves the index unchanged. Each supported
 platform then runs the real public installer with an empty system PATH. UI checks
-both bases, type checking, build/verify and watched Preview/stop. Extension checks
+both bases, type checking, build/verify, tamper rejection and explicit rebuilding.
+Desktop Preview separately requires a signed-in installed App and active Space;
+this offline release gate does not claim App/device acceptance. Extension checks
 independent TS validation, ordinary dependency installation, actual behavior tests
 and builds. Wave checks the installed generator/checker against a clearly labeled
 recorded compiler fixture; it does not claim live Hub or device/SDK acceptance.

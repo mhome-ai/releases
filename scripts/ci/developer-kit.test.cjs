@@ -211,9 +211,9 @@ test("normalized Node archives are deterministic and reject escaping links", (t)
     "-c",
     `import io,tarfile,sys
 with tarfile.open(sys.argv[1],"w:gz") as archive:
- for name,body in [("node-v1/bin/node",b"executable"),("node-v1/lib/node_modules/npm/package.json",b"{}")]:
-  entry=tarfile.TarInfo(name);entry.size=len(body);entry.mtime=123;archive.addfile(entry,io.BytesIO(body))
- link=tarfile.TarInfo("node-v1/bin/npm");link.type=tarfile.SYMTYPE;link.linkname="../lib/node_modules/npm/package.json";archive.addfile(link)
+ for name,body,mode in [("node-v1/bin/node",b"executable",0o755),("node-v1/lib/node_modules/npm/package.json",b"{}",0o644),("node-v1/lib/node_modules/npm/bin/npm-cli.js",b"#!/bin/sh\\necho managed-npm-ready\\n",0o755)]:
+  entry=tarfile.TarInfo(name);entry.size=len(body);entry.mode=mode;entry.mtime=123;archive.addfile(entry,io.BytesIO(body))
+ link=tarfile.TarInfo("node-v1/bin/npm");link.type=tarfile.SYMTYPE;link.linkname="../lib/node_modules/npm/bin/npm-cli.js";archive.addfile(link)
 `,
     path.join(root, "upstream.tar.gz"),
   ]);
@@ -231,6 +231,16 @@ with tarfile.open(sys.argv[1],"w:gz") as archive:
   assert.deepEqual(
     fs.readFileSync(path.join(root, "one.tar.gz")),
     fs.readFileSync(path.join(root, "two.tar.gz"))
+  );
+  execFileSync("python3", ["-c", `import tarfile,sys
+with tarfile.open(sys.argv[1]) as archive:
+ assert archive.getmember("lib/node_modules/npm/bin/npm-cli.js").mode == 0o755
+ assert archive.getmember("lib/node_modules/npm/package.json").mode == 0o644
+ archive.extractall(sys.argv[2])
+`, path.join(root,"one.tar.gz"),path.join(root,"installed")]);
+  if (process.platform !== "win32") assert.equal(
+    execFileSync(path.join(root,"installed/bin/npm"),[],{encoding:"utf8"}).trim(),
+    "managed-npm-ready"
   );
   execFileSync("python3", [
     "-c",
@@ -365,4 +375,22 @@ test("publication binds frozen commits to the canonical source repository",()=>{
   assert.doesNotThrow(()=>assertOrigin('/source','script',()=>origin));
  for(const origin of ['https://github.com/other/script.git','https://example.invalid/mhome-ai/script.git'])
   assert.throws(()=>assertOrigin('/source','script',()=>origin),/Expected the mhome-ai/);
+});
+
+test("source tag verification refetches remote state and rejects moved or deleted tags",()=>{
+ const {verifySourceTag}=require('./developer-kit-job.cjs');
+ const expected='a'.repeat(40),tag='kit-ui-v3.2.0',calls=[];
+ let remote=expected;
+ const command=(_,args)=>{
+  calls.push(args);
+  if(args.includes('remote'))return 'git@github.com:mhome-ai/pallas-cat.git';
+  if(args.includes('fetch')){if(remote===null)throw Error('remote tag deleted');return '';}
+  return remote;
+ };
+ verifySourceTag('/source','pallas-cat',tag,expected,command);
+ remote='b'.repeat(40);
+ assert.throws(()=>verifySourceTag('/source','pallas-cat',tag,expected,command),/Source tag moved/);
+ remote=null;
+ assert.throws(()=>verifySourceTag('/source','pallas-cat',tag,expected,command),/remote tag deleted/);
+ assert.equal(calls.filter(args=>args.includes('fetch')).length,3);
 });

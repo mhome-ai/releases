@@ -1,7 +1,5 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { spawn, spawnSync } = require("node:child_process");
-const { once } = require("node:events");
 const assert = require("node:assert/strict");
 const {
   decode,
@@ -96,111 +94,7 @@ async function accept(kit, version, platform, directory) {
     await fs.writeFile(path.join(directory,"result.json"),JSON.stringify({kit,version,platform,cliVersion:cli.version,manifestSha256:sha(manifestBytes),passed:true})+"\n");
     return;
   }
-  for (const baseUi of ["default", "default-pod"]) {
-    const project = path.join(directory, `skin-${baseUi}`);
-    call("init", project, "--kit-version", version, "--base-ui", baseUi);
-    call("deps", "install", project);
-    const patterns = call("patterns", "--project", project);
-    assert(patterns.patterns.length > 0);
-    const out = path.join(directory, `dist-${baseUi}`);
-    const built = call("build", project, out);
-    assert.deepEqual(call("verify", out), built);
-    assert.equal(built.baseUi, baseUi);
-    const info = JSON.parse(
-      await fs.readFile(path.join(out, "build-info.json"))
-    );
-    assert.equal(info.devkitVersion, version);
-    assert.equal(info.devkitManifestSha256, sha(manifestBytes));
-    const renderer = built.renderers[0];
-    const preview = spawn(
-      binary,
-      [
-        "--home",
-        home,
-        "make",
-        "ui",
-        "card",
-        "preview",
-        "start",
-        project,
-        "--pattern",
-        renderer.supportedPatterns[0].patternId,
-        "--renderer",
-        renderer.id,
-      ],
-      {
-        env,
-        detached: process.platform !== "win32",
-        stdio: ["ignore", "pipe", "inherit"],
-      }
-    );
-    let stdout = "";
-    try {
-      const url = await new Promise((resolve, reject) => {
-        const timer = setTimeout(
-          () => reject(new Error("Preview startup timed out")),
-          60000
-        );
-        preview.once("error", (error) => {
-          clearTimeout(timer);
-          reject(error);
-        });
-        preview.once("exit", (code) => {
-          clearTimeout(timer);
-          reject(new Error(`Preview exited: ${code}`));
-        });
-        preview.stdout.on("data", (chunk) => {
-          stdout += chunk;
-          if (stdout.includes("\n")) {
-            clearTimeout(timer);
-            try {
-              resolve(JSON.parse(stdout.split("\n")[0]).url);
-            } catch (error) {
-              reject(error);
-            }
-          }
-        });
-      });
-      const before = call("preview", "status", "--url", url);
-      assert.equal(before.status, "ready");
-      await fs.appendFile(
-        path.join(project, "skin.jsx"),
-        "\n// acceptance save\n"
-      );
-      let updated;
-      for (let attempt = 0; attempt < 100; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        updated = call("preview", "status", "--url", url);
-        if (updated.status === "ready" && updated.build.id !== before.build.id)
-          break;
-      }
-      assert.equal(updated.status, "ready");
-      assert.notEqual(
-        updated.build.id,
-        before.build.id,
-        "File watcher must publish a fresh build"
-      );
-      const exited = once(preview, "exit", {
-        signal: AbortSignal.timeout(15000),
-      });
-      call("preview", "stop", "--url", url);
-      await exited;
-    } finally {
-      if (preview.exitCode === null) {
-        if (process.platform === "win32")
-          spawnSync("taskkill", ["/PID", String(preview.pid), "/T", "/F"], {
-            stdio: "ignore",
-          });
-        else {
-          try {
-            process.kill(-preview.pid, "SIGTERM");
-          } catch (error) {
-            if (error.code !== "ESRCH") throw error;
-          }
-        }
-      }
-    }
-  }
+  await acceptUiProjects({directory,version,manifestBytes,call});
   make("kit", "remove", kit,"--version",version);
   await fs.writeFile(
     path.join(directory, "result.json"),
@@ -218,6 +112,34 @@ async function accept(kit, version, platform, directory) {
     ) + "\n"
   );
 }
+// This is the offline toolchain gate. Desktop Preview uses a signed-in App,
+// active Space and the native host boundary; it has no standalone web server.
+async function acceptUiProjects({directory,version,manifestBytes,call}) {
+  for (const baseUi of ["default", "default-pod"]) {
+    const project=path.join(directory,`skin-${baseUi}`);
+    await call("init",project,"--kit-version",version,"--base-ui",baseUi);
+    await call("deps","install",project);
+    const patterns=await call("patterns","--project",project);
+    assert(patterns.patterns.length>0);
+    const out=path.join(directory,`dist-${baseUi}`);
+    const built=await call("build",project,out);
+    assert.deepEqual(await call("verify",out),built);
+    assert.equal(built.baseUi,baseUi);
+    const info=JSON.parse(await fs.readFile(path.join(out,"build-info.json")));
+    assert.equal(info.devkitVersion,version);
+    assert.equal(info.devkitManifestSha256,sha(manifestBytes));
+    const entry=path.join(out,built.entry),original=await fs.readFile(entry);
+    try {
+      await fs.appendFile(entry,"\n// altered release bytes\n");
+      await assert.rejects(async()=>call("verify",out),undefined,
+        "Verification must reject altered compiled bytes");
+    } finally {await fs.writeFile(entry,original);}
+    await fs.appendFile(path.join(project,"surface.css"),"\n:root { --acceptance-rebuild: 1; }\n");
+    const rebuilt=await call("build",project,`${out}-next`);
+    assert.notDeepEqual(rebuilt.files,built.files,"Rebuilding an edited source must change its artifacts");
+    assert.deepEqual(await call("verify",out),built,"A rebuild must preserve the previous verified output");
+  }
+}
 async function acceptDomain({kit,version,directory,manifest,manifestBytes,home,node,env,make}) {
   const project=path.join(directory,"project"),output=path.join(directory,"generated");
   await fs.mkdir(project);
@@ -226,7 +148,10 @@ async function acceptDomain({kit,version,directory,manifest,manifestBytes,home,n
     await fs.mkdir(path.join(project,"schema"));await fs.mkdir(path.join(project,"tests"));
     await fs.writeFile(path.join(project,"schema/test-device.yml"),"integration:\n  domain: test\n  entity: device\n");
     await fs.writeFile(path.join(project,"schema/test-device-state-value.yml"),"capability:\n  domain: test\n  entity: device\n  method: state\n  capability: value\n  implementation:\n    script: {name: double, args: [\"$req\"]}\n");
-    await fs.writeFile(path.join(project,"extension.json"),JSON.stringify({schemaVersion:1,projectId:"test",integrations:[{id:"test.device",schemaRoot:"schema",scriptProject:".",tests:"tests"}]}));
+    await fs.writeFile(path.join(project,"extension.json"),JSON.stringify({schemaVersion:1,projectId:"test",ui:"ui",integrations:[{id:"test.device",schemaRoot:"schema",scriptProject:".",tests:"tests"}]}));
+    await fs.mkdir(path.join(project,"ui"));
+    await fs.writeFile(path.join(project,"ui/package.json"),JSON.stringify({private:true,scripts:{"build:extension":"node build.cjs"}}));
+    await fs.writeFile(path.join(project,"ui/build.cjs"),"const fs=require('node:fs'),path=require('node:path');fs.writeFileSync(path.join(process.argv[process.argv.indexOf('--output')+1],'index.js'),'export const ready=true;');");
     const source=JSON.parse(await fs.readFile(path.join(installed,"package.json")));
     await fs.writeFile(path.join(project,"package.json"),JSON.stringify({private:true,devDependencies:{"@mhome/script-build":source.dependencies["@mhome/script-build"]}}));
     await fs.writeFile(path.join(project,"double.ts"),"export default (n:number)=>n*2;");
@@ -234,11 +159,16 @@ async function acceptDomain({kit,version,directory,manifest,manifestBytes,home,n
     make("kit","use",kit,"--version",version,"--project",project);
     // The Kit manager owns Node/npm; authors keep ordinary exact dependencies.
     make("kit","deps",kit,"add","--project",project);
+    make("kit","deps",kit,"add","--project",project,"--directory","ui");
     make("extension","validate","--project",project);
     make("extension","test","--project",project,"--integration","test.device");
     const result=make("extension","build","--project",project,"--integration","test.device","--output",output);
     assert.equal(result.functions[0].function,"double");
     assert.equal((await fs.stat(path.join(output,"double.js"))).isFile(),true);
+    const uiOutput=`${output}-ui`;
+    const uiResult=make("extension","ui-build","--project",project,"--output",uiOutput);
+    assert(uiResult.files.some(file=>file.path==="index.js"));
+    assert.equal(await fs.readFile(path.join(uiOutput,"index.js"),"utf8"),"export const ready=true;");
   } else {
     for(const [name,target] of [["contracts.fixture.json","wave.contracts.json"],["bindings.fixture.json","wave.bindings.json"]]) {
       const file=manifest.files.find(item=>item.path===name);assert(file);
@@ -253,7 +183,7 @@ async function acceptDomain({kit,version,directory,manifest,manifestBytes,home,n
     // This offline fixture validates the installed generator/checker, not live Hub access or SDK delivery.
   }
 }
-module.exports = { accept };
+module.exports = { accept, acceptUiProjects };
 if (require.main === module)
   accept(...process.argv.slice(2)).catch((error) => {
     console.error(error);
