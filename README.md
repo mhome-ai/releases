@@ -125,6 +125,13 @@ Plugin 源码必须来自 `origin/main` 上的 annotated `t` tag。没有 `t` �
 
 ## Desktop platform update feeds
 
+User-facing desktop notes may be frozen with the publishing orchestrator in
+`release-notes/desktop/v<app-version>.md`, including the product/version heading.
+The release copies that exact nonempty Markdown into its artifacts. When absent,
+it uses the existing Baycat source-note formatter; missing notes still fail rather
+than falling back to Git commit messages. Publication notes do not alter runtime
+source tags, and their provenance is the selected Releases commit.
+
 Desktop app versions are independent across platforms. GitHub platform Releases
 retain immutable packages, signatures and `latest.json`; new releases never
 select GitHub global Latest. After public manifest and updater-package downloads

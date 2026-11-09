@@ -9,7 +9,13 @@ const { spawnSync } = require("node:child_process");
 // deliberately has no build/signing scripts, so attempting to rebuild fails.
 function resume(
   t,
-  { version = "1.0.6", revision = "frozen-source", lookupError, draft = false } = {}
+  {
+    version = "1.0.6",
+    revision = "frozen-source",
+    lookupError,
+    draft = false,
+    publisherNotes,
+  } = {}
 ) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "desktop resume test "));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -27,6 +33,11 @@ function resume(
     path.join(__dirname, "desktop-release.sh"),
     path.join(ci, "desktop-release.sh")
   );
+  if (publisherNotes !== undefined) {
+    const notes = path.join(root, "release-notes/desktop/v1.0.6.md");
+    fs.mkdirSync(path.dirname(notes), { recursive: true });
+    fs.writeFileSync(notes, publisherNotes);
+  }
   fs.copyFileSync(
     path.join(baycatSource, "scripts/release/desktop-update-manifest.js"),
     path.join(scripts, "desktop-update-manifest.js")
@@ -38,7 +49,9 @@ function resume(
   fs.writeFileSync(path.join(scripts, "resolve-release-platforms.js"), "");
   fs.writeFileSync(
     path.join(scripts, "format-release-notes.js"),
-    'console.log("notes");'
+    publisherNotes === undefined
+      ? 'console.log("notes");'
+      : 'throw new Error("Product-note fallback must not run when publisher notes exist");'
   );
   fs.writeFileSync(
     path.join(ci, "lib.sh"),
@@ -119,13 +132,33 @@ if (args[1] === "view") {
     result,
     promoted: fs.existsSync(path.join(root, "promoted")),
     cleaned: fs.existsSync(path.join(root, "cleaned")),
+    notes: fs.existsSync(path.join(baycat, "build/release-notes.md"))
+      ? fs.readFileSync(path.join(baycat, "build/release-notes.md"), "utf8")
+      : undefined,
   };
 }
 
 test("a public Windows release resumes promotion without rebuilding signed packages", (t) => {
-  const { result, promoted, cleaned } = resume(t);
+  const { result, promoted, cleaned, notes } = resume(t);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(promoted, true);
+  assert.equal(cleaned, true);
+  assert.equal(notes, "notes\n");
+});
+
+test("frozen publisher notes are copied exactly without requiring product-source notes", (t) => {
+  const publisherNotes = "## MeowLink 1.0.6\n\nReviewed publication notes.\n";
+  const { result, promoted, notes } = resume(t, { publisherNotes });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(promoted, true);
+  assert.equal(notes, publisherNotes);
+});
+
+test("empty publisher notes stop publication instead of silently using other notes", (t) => {
+  const { result, promoted, cleaned } = resume(t, { publisherNotes: " \n" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /release notes are empty/);
+  assert.equal(promoted, false);
   assert.equal(cleaned, true);
 });
 test("public retry rejects a changed source snapshot or desktop version", (t) => {

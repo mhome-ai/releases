@@ -50,7 +50,13 @@ APP_VERSION="$(node -p "require('./package.json').version")"
 node scripts/release/resolve-release-platforms.js --event push --ref "$tag" >/dev/null
 notes_file="$BAYCAT_DIR/build/release-notes.md"
 mkdir -p "$BAYCAT_DIR/build"
-node scripts/release/format-release-notes.js --version "$APP_VERSION" > "$notes_file"
+publisher_notes="$RELEASES_DIR/release-notes/desktop/v${APP_VERSION}.md"
+if [ -f "$publisher_notes" ]; then
+  node -e 'if (!require("node:fs").readFileSync(process.argv[1], "utf8").trim()) throw new Error("Desktop release notes are empty")' "$publisher_notes"
+  cp "$publisher_notes" "$notes_file"
+else
+  node scripts/release/format-release-notes.js --version "$APP_VERSION" > "$notes_file"
+fi
 
 # A public release already owns immutable signed binaries. A retry must reuse
 # them, especially on Windows where rebuilding would change signing timestamps.
