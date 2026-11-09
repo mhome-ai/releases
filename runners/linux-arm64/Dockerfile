@@ -58,7 +58,7 @@ RUN curl -fsSL "https://github.com/jedisct1/minisign/releases/download/${MINISIG
     && chmod 755 /usr/local/bin/minisign \
     && rm -rf /tmp/minisign.tar.gz /tmp/minisign-linux
 
-ARG NODE_VERSION=20.20.2
+ARG NODE_VERSION=22.22.2
 RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-arm64.tar.xz" \
       -o /tmp/node.tar.xz \
     && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt" -o /tmp/SHASUMS256.txt \

@@ -25,6 +25,7 @@ test "$("$scratch/smoke-cpp")" = 'c++17 ok'
 
 # Loading each CLI catches binaries that require a newer libc than the OEM baseline.
 node --version
+node -e 'if (Number(process.versions.node.split(".")[0]) < 22) throw new Error("Script build tools require Node 22+"); if (new Function("return 6 * 7")() !== 42) process.exit(1)'
 npm --version
 gh --version
 docker --version

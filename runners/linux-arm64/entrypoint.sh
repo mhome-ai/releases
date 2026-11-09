@@ -29,6 +29,9 @@ if ! command -v rustc >/dev/null 2>&1; then
     | sh -s -- -y --default-toolchain stable --profile minimal --no-modify-path
 fi
 rustup target add aarch64-unknown-linux-gnu >/dev/null
+rustup component add --toolchain stable rustfmt clippy
+cargo +stable fmt --version
+cargo +stable clippy --version
 
 RUNNER_DIR="$HOME/actions-runner"
 RUNNER_VERSION=2.337.0
