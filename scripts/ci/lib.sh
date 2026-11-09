@@ -108,6 +108,28 @@ file_sha256() {
   ' "$1"
 }
 
+# Release creation and its tag lookup can become visible at different times.
+# Retry reads only; exit 4 means a confirmed missing release, never a transport
+# or permission failure. Keep failed partial stdout out of JSON consumers.
+github_release_view() {
+  local tag="$1" repo="$2" output error_file error pause
+  shift 2
+  error_file="$(mktemp)"
+  for pause in 0 2 4; do
+    [ "$pause" = 0 ] || sleep "$pause"
+    if output="$(gh release view "$tag" --repo "$repo" "$@" 2> "$error_file")"; then
+      rm -f "$error_file"
+      printf '%s\n' "$output"
+      return 0
+    fi
+  done
+  error="$(cat "$error_file")"
+  rm -f "$error_file"
+  printf '%s\n' "$error" >&2
+  [ "$error" != 'release not found' ] || return 4
+  return 1
+}
+
 # Draft retries skip GitHub upload when the uploaded asset digest already
 # matches the local file. Public releases never modify assets.
 upload_github_release_asset_if_changed() {
@@ -116,7 +138,7 @@ upload_github_release_asset_if_changed() {
   name="$(basename "$file")"
   [ -f "$file" ] || fail "missing release asset $file"
   digest="sha256:$(file_sha256 "$file")"
-  assets="$(gh release view "$tag" --repo "$repo" --json assets)"
+  assets="$(github_release_view "$tag" "$repo" --json assets)"
   decision="$(printf '%s' "$assets" | node "$CI_ROOT/github-release-asset-match.js" --name "$name" --digest "$digest")"
   if [ "$decision" = "skip" ]; then
     echo "Skipping GitHub upload for $name ($digest matches)"

@@ -192,7 +192,11 @@ done < build/runtime-catalog/publish-assets.txt
 # completed catalog files plus sibling tar.gz left in "starter" state, then
 # uploads.github.com returns HTTP 400. Create an empty draft, then replace one
 # asset at a time.
-if ! gh release view "$PRODUCT_RELEASE_TAG" --repo "$repo" >/dev/null 2>&1; then
+if github_release_view "$PRODUCT_RELEASE_TAG" "$repo" >/dev/null; then
+  :
+else
+  lookup_status=$?
+  [ "$lookup_status" = 4 ] || fail "Cannot inspect the existing native release"
   gh release create "$PRODUCT_RELEASE_TAG" \
     --repo "$repo" \
     --draft \
@@ -200,7 +204,7 @@ if ! gh release view "$PRODUCT_RELEASE_TAG" --repo "$repo" >/dev/null 2>&1; then
     --title "MeowLink Runtime ${app_version}" \
     --notes-file build/runtime-catalog/release-notes.md
 fi
-is_draft="$(gh release view "$PRODUCT_RELEASE_TAG" --repo "$repo" --json isDraft --jq .isDraft)"
+is_draft="$(github_release_view "$PRODUCT_RELEASE_TAG" "$repo" --json isDraft --jq .isDraft)"
 if [ "$is_draft" = "true" ]; then
   for file in "${release_files[@]}"; do
     upload_github_release_asset_if_changed "$PRODUCT_RELEASE_TAG" "$repo" "$file"
