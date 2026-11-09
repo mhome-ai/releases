@@ -43,5 +43,6 @@ elif { [ "$status" = 403 ] || [ "$status" = 404 ]; } && [ "${INITIALIZE_CATALOG:
 else
   fail "Cannot read the previous Plugin Catalog ($status)"
 fi
-node scripts/release/native/package.js --target "$PRODUCT_PLATFORM" --mode release --phase build --output "$handoff/assets" ${previous_args[@]+"${previous_args[@]}"}
+# Reuse checksum-verified downloads across disposable source worktrees.
+node scripts/release/native/package.js --target "$PRODUCT_PLATFORM" --mode release --phase build --output "$handoff/assets" --download-cache "$MHOME/cache/native-downloads" ${previous_args[@]+"${previous_args[@]}"}
 node "$CI_ROOT/verify-plugin-handoff.js" --write "$handoff" "$PLUGIN_REVISION" "$(git -C "$RELEASES_DIR" rev-parse HEAD)" "$PRODUCT_RELEASE_TAG"

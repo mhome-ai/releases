@@ -46,6 +46,11 @@ docker run --rm --platform linux/amd64 --entrypoint verify-linux-builder.sh meow
 An edited Dockerfile does not update an existing runner. Rebuild and replace
 each idle container with its existing compose project and named volumes;
 registration, source checkouts and downloaded dependencies remain in those volumes.
+
+Plugin build inputs use `~/.mhome/cache/native-downloads`, passed explicitly with
+`--download-cache`. The source-owned downloader verifies SHA-256 before storing
+or restoring each archive. This cache survives disposable worktrees and is
+separate from the 16 GiB compiler cache.
 Do not use `down -v`. Cargo objects live under `cargo-target/debian11` only for
 the duration of one job.
 

@@ -326,6 +326,7 @@ test("Plugin builds and publishes on the existing runner with local artifact ver
   assert.match(publish, /if: always\(\)/);
   assert.doesNotMatch(read("scripts/ci/plugin-build.sh"), /trap cleanup_worktree/);
   assert.match(read("scripts/ci/plugin-build.sh"), /quality-gate\.sh/);
+  assert.match(read("scripts/ci/plugin-build.sh"), /--download-cache "\$MHOME\/cache\/native-downloads"/);
   assert.match(read("scripts/ci/plugin-release.sh"), /verify-plugin-handoff\.js/);
   assert.match(read("scripts/ci/plugin-release.sh"), /--phase publish/);
 });
