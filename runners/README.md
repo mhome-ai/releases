@@ -62,7 +62,34 @@ hook empties the runner's dedicated `cargo-target` volume after all workflow
 steps and action post-steps, including packaging, signing, upload and verification.
 The started hook removes leftovers from an interrupted previous job. All profiles,
 architectures and historical baseline directories are removed without a size threshold.
-Builds within one job can reuse output; later jobs start with a cold target.
+Builds within one job can reuse output; later jobs start with a fresh target.
+Registry library compilations additionally use pinned sccache 0.19.0 in a separate
+`compiler-cache` volume, limited to 16 GiB per runner (32 GiB across both runners).
+Workspace, path and Git packages compile directly, including their source-path
+dependent fixtures. No source-path normalization, remote cache, shared workspace
+target or new environment variable is introduced. Cargo's fixed configuration
+selects the wrapper; an existing unknown Cargo configuration is preserved and
+requires review instead of being overwritten. Compiler-cache configuration lives
+in `~/.config/sccache/config` in the image.
+
+Before and after jobs, compiler-cache hooks verify the actual container image ID
+through the existing Docker socket. The cache is reset when that ID changes or
+its measured disk usage exceeds 16 GiB; otherwise registry objects are retained.
+Rust compiler versions, inputs and flags also participate in sccache's own keys.
+The hooks stop the idle cache daemon before inspecting or clearing its dedicated
+volume. Source, mount, symlink, active-build and open-file guards remain enforced;
+unowned nonempty caches fail closed. Post-job errors warn; pre-job errors block.
+The old Cargo-target hooks still run and keep their original lifecycle.
+
+The 16 GiB budget is fixed, rather than derived from free space inside Docker:
+Docker Desktop's guest free-space report can exceed the physical Mac's capacity.
+Watch physical host free space during large releases. Changing this policy requires
+rebuilding the images and replacing idle runner containers, preserving all named
+volumes and registration. Never replace a busy runner or use `down -v`.
+Before rolling back to an older image without the wrapper, remove only the
+byte-for-byte matching runner-owned `~/.cargo/config.toml` while the runner is
+idle; preserve any different configuration for review. Compiler-cache contents
+can remain in their separate volume until a compatible image validates them.
 
 Cleanup preserves the volume mount, source repositories, Cargo downloads, Rust
 toolchains, model downloads, SSH keys and runner registration. It rejects symlinks
@@ -82,6 +109,7 @@ Test cleanup only in disposable fixtures:
 
 ```sh
 python3 -B runners/test_cleanup_job_target.py
+python3 -B runners/test_compiler_cache.py
 ```
 
 Put a read key for `baycat`, `integration`, `meowcore-rust`, `agent`, `tiger`,

@@ -103,6 +103,11 @@ COPY --chmod=755 cleanup-job-target.py job-started.sh job-completed.sh /usr/loca
 COPY --chmod=755 install-test-ffmpeg.sh /usr/local/bin/
 RUN install-test-ffmpeg.sh
 
+COPY --chmod=755 install-sccache.sh /usr/local/bin/
+RUN install-sccache.sh
+COPY --chmod=755 compiler-cache.py rustc-registry-cache.py cache-entrypoint.sh cache-job-started.sh cache-job-completed.sh /usr/local/bin/
+COPY compiler-cache-config.toml /home/runner/.config/sccache/config
+
 USER runner
 WORKDIR /home/runner
 ENV HOME=/home/runner \
@@ -110,12 +115,12 @@ ENV HOME=/home/runner \
     CARGO_HOME=/home/runner/.cargo \
     RUSTUP_HOME=/home/runner/.rustup \
     CARGO_TARGET_DIR=/home/runner/.cache/cargo-target/debian11 \
-    ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/job-started.sh \
-    ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/job-completed.sh \
+    ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/cache-job-started.sh \
+    ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/bin/cache-job-completed.sh \
     MHOME_DOWNLOAD_CACHE_ROOT=/home/runner/.cache/mhome-downloads \
     CARGO_TERM_COLOR=always \
     PATH=/home/runner/.cargo/bin:/usr/local/bin:/usr/bin:/bin
 
-RUN verify-linux-builder.sh
+RUN verify-linux-builder.sh && sccache --version && python3 /usr/local/bin/compiler-cache.py --help >/dev/null
 
-ENTRYPOINT ["/usr/local/bin/linux-amd64-runner-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/cache-entrypoint.sh"]

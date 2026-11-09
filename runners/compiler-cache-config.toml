@@ -1,0 +1,4 @@
+# Registry compiler objects only; no source-path normalization or remote backend.
+[cache.disk]
+dir = "/home/runner/.cache/compiler-cache/artifacts"
+size = 17179869184

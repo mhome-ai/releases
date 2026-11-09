@@ -24,6 +24,7 @@ services:
       - cargo-home:/home/runner/.cargo
       - rustup-home:/home/runner/.rustup
       - cargo-target:/home/runner/.cache/cargo-target
+      - compiler-cache:/home/runner/.cache/compiler-cache
       - download-cache:/home/runner/.cache/mhome-downloads
       - mhome-src:/home/runner/.mhome
       - runner-ssh:/home/runner/.ssh
@@ -34,6 +35,7 @@ volumes:
   cargo-home:
   rustup-home:
   cargo-target:
+  compiler-cache:
   download-cache:
   mhome-src:
   runner-ssh:
