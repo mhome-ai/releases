@@ -145,6 +145,11 @@ Mac `am` updates `darwin-aarch64` and `darwin-x86_64`; Windows `aw` updates
 Linux updater endpoints include Tauri's bundle type so a Debian installation never
 downloads an AppImage update. Linux desktop image builds reuse the Docker daemon's
 prepared BuildKit cache; native builds retain their separate disposable builders.
+The x64 desktop recipe prepares a SHA-256-pinned AppImage output plugin with the
+same ELF padding treatment Tauri applies to linuxdeploy, allowing execution on
+the Docker x64 emulation host. The distributed installers retain their original
+headers and signatures. Container acceptance records any temporary extraction
+adapter and does not claim physical desktop acceptance.
 Existing source snapshots and platform queues stay in place. There is no
 cross-platform manifest merge or transaction.
 

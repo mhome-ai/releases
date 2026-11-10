@@ -99,7 +99,10 @@ async function main() {
     baycat,
     image,
     "bash",
-    "scripts/release/linux/build-linux-desktop.sh",
+    "-c",
+    'python3 "$1/runners/prepare-appimage-tool.py" && exec bash scripts/release/linux/build-linux-desktop.sh',
+    "desktop-builder",
+    releases,
   ];
   const child = spawn("docker", args, { stdio: "inherit" });
   let stopped = false;
