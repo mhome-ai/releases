@@ -5,7 +5,7 @@ const os=require('node:os');
 const path=require('node:path');
 const {createHash}=require('node:crypto');
 const {spawnSync}=require('node:child_process');
-const {inventory,verifyPlan,publishSdk,names,normalizeLock}=require('./developer-sdk-job.cjs');
+const {inventory,verifyPlan,prepareSdkDependencies,publishSdk,names,normalizeLock}=require('./developer-sdk-job.cjs');
 const registry=require('./developer-sdk-registry.json');
 
 function fixture(t) {
@@ -37,6 +37,37 @@ function fixture(t) {
   };
   return {source,tool,plan,calls,command,state:value=>{state=value;},uncertain:()=>{uncertain=true;}};
 }
+test('cold SDK preparation fetches the independent staged graph without an upload credential',t=>{
+  const f=fixture(t),before=inventory(f.source),previous=process.env.CARGO_REGISTRY_TOKEN;
+  process.env.CARGO_REGISTRY_TOKEN='fixture-upload-token';
+  let checked;
+  try {
+    prepareSdkDependencies(f.source,{command:(name,args,options)=>{
+      assert.equal(name,'cargo');assert.equal(args[0],'fetch');
+      assert.equal(Object.hasOwn(options.env,'CARGO_REGISTRY_TOKEN'),false);
+      checked=options.cwd;
+      const manifest=fs.readFileSync(args[args.indexOf('--manifest-path')+1],'utf8');
+      for(const name of names) {
+        assert(manifest.includes(`${name} = { path = "crates/${name}" }`));
+        assert.equal(fs.readFileSync(path.join(options.cwd,'crates',name,'Cargo.toml'),'utf8'),
+          fs.readFileSync(path.join(f.source,name,'Cargo.toml'),'utf8'));
+      }
+    }});
+  } finally {
+    if(previous===undefined)delete process.env.CARGO_REGISTRY_TOKEN;
+    else process.env.CARGO_REGISTRY_TOKEN=previous;
+  }
+  assert(checked);assert(!fs.existsSync(checked));
+  assert.deepEqual(inventory(f.source),before,'fetching must preserve the frozen candidate');
+});
+test('a dependency fetch failure stops and removes only its own preparation files',t=>{
+  const f=fixture(t);let check;
+  assert.throws(()=>prepareSdkDependencies(f.source,{command:(_name,_args,options)=>{
+    check=options.cwd;throw new Error('missing registry dependency');
+  }}),/missing registry dependency/);
+  assert(!fs.existsSync(check));assert(fs.existsSync(f.source));
+  assert.doesNotThrow(()=>verifyPlan(f.plan,f.source));
+});
 test('SDK packages publish in dependency order and share compiled dependency output',t=>{
   const f=fixture(t);publishSdk(f.plan,f.source,f.tool,{command:f.command});
   const uploads=f.calls.filter(c=>c.name==='cargo'&&c.args[0]==='publish'&&!c.args.includes('--dry-run'));

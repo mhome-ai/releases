@@ -28,6 +28,19 @@ function verifyPlan(plan,directory) {
   if(!fs.lstatSync(lock).isFile() || hash(fs.readFileSync(lock))!==plan.dependencyLockSha256)throw new Error('Frozen SDK dependency lock changed');
   if(JSON.stringify(inventory(directory))!==JSON.stringify(plan.files))throw new Error('Frozen SDK source changed');
 }
+function prepareSdkDependencies(directory,{command=run}={}) {
+  // Fetch only the independent SDK check's closed registry graph. Do not depend
+  // on a runner's earlier builds or fetch the unrelated Integration workspace.
+  const check=fs.mkdtempSync(path.join(path.dirname(directory),'sdk-dependencies-'));
+  try {
+    fs.cpSync(directory,path.join(check,'crates'),{recursive:true});
+    const manifest=path.join(check,'Cargo.toml');
+    fs.writeFileSync(manifest,'[workspace]\nresolver="2"\nmembers=["crates/mhome-plugin-sdk"]\n\n[patch.crates-io]\n'
+      +names.map(name=>`${name} = { path = "crates/${name}" }`).join('\n')+'\n');
+    const env={...process.env};delete env.CARGO_REGISTRY_TOKEN;
+    command('cargo',['fetch','--manifest-path',manifest],{cwd:check,env,timeout:300000});
+  } finally {fs.rmSync(check,{recursive:true,force:true});}
+}
 function publishSdk(plan,directory,tool,{command=run}={}) {
   verifyPlan(plan,directory);
   if(hash(fs.readFileSync(tool))!==registryConfig().sha256)throw new Error('Registry verifier differs from the pinned source');
@@ -94,11 +107,12 @@ async function main() {
       run('git',['-C',original,'worktree','add','--detach',path.join(work,name),sha]);
     }
     run('npm',['ci','--prefix','tools/devkit','--ignore-scripts','--no-audit','--no-fund'],{cwd:source});
-    run('node',['--test','tools/devkit/native-sdk.test.mjs'],{cwd:source});
     fs.mkdirSync(artifacts);
     const {stageNativeSdk}=await import(pathToFileURL(path.join(source,'tools/devkit/stage-native.mjs')));
     const packages=stageNativeSdk(sdk,{tag,commit}).map(({name,version})=>({name,version}));
     if(tag!==`sdk-plugin-v${packages.at(-1).version}`)throw new Error('SDK tag does not match the public facade version');
+    prepareSdkDependencies(sdk);
+    run('node',['--test','tools/devkit/native-sdk.test.mjs'],{cwd:source});
     const lock=normalizeLock(fs.readFileSync(path.join(source,'Cargo.lock'),'utf8'));
     fs.writeFileSync(path.join(artifacts,'dependency.lock'),lock);
     const plan={schemaVersion:1,source:{tag,commit},packages,dependencyLockSha256:hash(lock),files:inventory(sdk)};
@@ -110,5 +124,5 @@ async function main() {
     publishSdk(plan,sdk,path.join(tools,registry.path));
   } else throw new Error('Expected setup, build, publish or clean');
 }
-module.exports={inventory,verifyPlan,publishSdk,names,normalizeLock};
+module.exports={inventory,verifyPlan,prepareSdkDependencies,publishSdk,names,normalizeLock};
 if(require.main===module)main().catch(error=>{console.error(error.message);process.exitCode=1;});
