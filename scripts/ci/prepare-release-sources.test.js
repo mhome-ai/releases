@@ -53,11 +53,12 @@ test("prepares sibling worktrees from product tags and leaves HEAD clones alone"
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "mhome-home-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   const agent = createOrigin(t, {
-    name: "agent", branch: "main", files: {
+    name: "agent", branch: "main", tag: "v0.11.5", files: {
       "Cargo.toml": '[workspace.package]\nversion = "0.11.5"\n',
     },
   });
   const agentClone = provisionClone(home, "agent", agent, "main");
+  git(agentClone, "tag", "-d", "v0.11.5");
   git(agentClone, "config", "user.name", "Release Test");
   git(agentClone, "config", "user.email", "release@example.invalid");
   write(path.join(agentClone, "later.txt"), "newer source must not enter the release");
@@ -105,6 +106,7 @@ test("prepares sibling worktrees from product tags and leaves HEAD clones alone"
     home,
   });
   assert.equal(git(result.agent_dir, "rev-parse", "HEAD"), agent.commit);
+  assert.equal(git(result.agent_dir, "rev-parse", "v0.11.5^{commit}"), agent.commit);
   assert.equal(git(agentClone, "branch", "--show-current"), "main");
   assert.equal(git(agentClone, "rev-parse", "HEAD"), currentAgentHead);
   assert.equal(fs.existsSync(path.join(result.agent_dir, "later.txt")), false);

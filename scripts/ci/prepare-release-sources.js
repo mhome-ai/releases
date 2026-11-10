@@ -387,9 +387,9 @@ function prepareAgentSource({ consumerDir, workRoot, home }) {
   }
   const clone = canonicalClonePath("agent", home);
   requireExistingClone({ name: "agent", repository: pin.repository }, clone);
-  // Fetch precisely the pinned source; never build an ambient main checkout.
-  git(clone, ["fetch", "origin", pin.commit]);
-  const commit = git(clone, ["rev-parse", `${pin.commit}^{commit}`]);
+  // Consumer release checks also require the exact published v tag. A fetch by
+  // SHA alone does not populate that tag in a newly provisioned source clone.
+  const commit = fetchTag(clone, productSourceTag(pin.version));
   if (commit !== pin.commit) fail("Agent source revision does not match its pin");
   const directory = path.join(workRoot, "agent");
   addDetachedWorktree(clone, directory, pin.commit);
