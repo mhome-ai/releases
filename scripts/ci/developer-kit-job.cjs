@@ -22,7 +22,7 @@ function verifySourceTag(directory,repository,tag,commit,command=run) {
 function workPath(phase,platform) {
   for(const value of [process.env.GITHUB_RUN_ID,process.env.GITHUB_RUN_ATTEMPT])
     if(!/^\d+$/.test(value || ''))throw new Error('A GitHub invocation is required');
-  if(!['prepare','accept','promote'].includes(phase)||!['none','darwin-arm64','darwin-x64','linux-arm64','linux-x64','win-x64'].includes(platform))throw new Error('Invalid job identity');
+  if(!['prepare','accept','promote'].includes(phase)||!['none','darwin-arm64','darwin-x64','linux-arm64','linux-x64'].includes(platform))throw new Error('Invalid job identity');
   return path.join(os.homedir(),'.mhome/work',`developer-kit-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}-${phase}-${platform}`);
 }
 async function main() {

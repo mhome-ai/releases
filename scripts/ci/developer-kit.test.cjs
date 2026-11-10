@@ -302,7 +302,7 @@ with tarfile.open(sys.argv[1],"w:gz") as archive:
   );
 });
 
-test("preparation freezes signed CLI assets for every platform, including the Windows asset key", async (t) => {
+test("preparation freezes signed CLI assets for all four advertised Mac/Linux platforms", async (t) => {
   const { execFileSync } = require("node:child_process");
   const { prepare, config } = require("./developer-kit.cjs");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "card-devkit-prepare-"));
@@ -395,15 +395,16 @@ test("preparation freezes signed CLI assets for every platform, including the Wi
     signer: async (value) => Buffer.from(JSON.stringify(value)),
   });
   assert.equal(manifest.version, "2.0.0");
-  assert.equal(Object.keys(manifest.platforms).length, 5);
+  assert.deepEqual(Object.keys(manifest.platforms), ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64']);
   assert.equal(commands.filter((name) => name === "gpgv").length, 1);
   const frozen = JSON.parse(
     fs.readFileSync(path.join(root, "acceptance.json"))
   );
   assert.equal(
-    frozen["win-x64"].asset.url,
-    "https://example.invalid/win-x64.tar.gz"
+    frozen["linux-x64"].asset.url,
+    "https://example.invalid/linux-x64.tar.gz"
   );
+  assert.equal(frozen['win-x64'], undefined);
   assert(manifest.files.some((file) => file.path === "acceptance.json"));
 });
 

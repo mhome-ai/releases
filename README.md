@@ -185,12 +185,13 @@ node --test scripts/ci/desktop-release.test.js scripts/ci/publish-desktop-update
 `meow make`. Source logic stays in Pallas, Integration and Wave respectively;
 Releases freezes, signs, verifies and distributes it. A release selects an exact
 `kit-<ui|extension|wave>-vX.Y.Z` source tag/full commit and an already published
-meow CLI version on all five supported platforms. No Kit release deploys the App
-website or distributes the Wave firmware SDK.
+meow CLI version on all four supported Mac/Linux platforms (ARM64 and x64).
+Windows is not advertised or included in this first release. No Kit release
+deploys the App website or distributes the Wave firmware SDK.
 
 The root is `https://install.mhome.ai/devkits/<kit>/`, in the existing
 `mhome-install-distribution` bucket. Each immutable version contains signed
-`kit.json`, exact preinstalled worker payloads and five normalized Node/npm
+`kit.json`, exact preinstalled worker payloads and four normalized Node/npm
 archives. UI/Wave share portable payloads; Extension carries each platform's locked
 native esbuild dependency. The manifest binds Kit identity, source/publisher
 commits, worker protocol, minimum CLI/OS, and URL/size/SHA-256 of every asset.
@@ -234,7 +235,7 @@ Runner/release prerequisites:
   origins, provisioned on the publisher; fetch exact objects into owned worktrees,
   never clone implicitly. Wave's source remote/release preparation is still a
   prerequisite; implementing its Kit does not create a repository or issue tags.
-- Existing macOS ARM64 + Rosetta, Linux ARM64/x64 and Windows x64 self-hosted
+- Existing macOS ARM64 + Rosetta and Linux ARM64/x64 self-hosted
   runners, with Node for the recipe, Minisign and tar. Product subprocesses use
   only the downloaded managed tools.
 - Publisher Node/npm, Python 3, Git, AWS CLI, Minisign and GnuPG (`gpg`/`gpgv`).

@@ -15,7 +15,7 @@ on:
         type: string
         required: true
       cli_version:
-        description: Already released meow CLI version on all five platforms
+        description: Already released meow CLI version on all four Mac/Linux platforms
         type: string
         required: true
 permissions:

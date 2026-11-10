@@ -350,7 +350,9 @@ test("Developer Kit promotes one index only after every platform exercises the p
   const workflow = read(".github/workflows/run-developer-kit.yaml");
   assert.match(workflow, /workflow_call:/);
   assert.match(workflow, /needs: \[prepare, accept\]/);
-  for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win-x64"]) assert.match(workflow, new RegExp(`platform: ${platform}`));
+  const platforms = Object.keys(JSON.parse(read('scripts/ci/developer-kit-runtime.json')).platforms);
+  assert.deepEqual(platforms, ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64']);
+  assert.deepEqual([...workflow.matchAll(/- platform: (\S+)/g)].map(match => match[1]), platforms);
   assert.match(workflow, /developer-kit-job\.cjs/);
   assert.match(entry, /options: \[ui, extension, wave\]/);
   assert.doesNotMatch(workflow, /CARD_DEVKIT_SOURCE_READ_TOKEN/);
@@ -359,7 +361,7 @@ test("Developer Kit promotes one index only after every platform exercises the p
   assert.match(source, /gpgv/);
   assert.doesNotMatch(workflow, /NODE_RELEASE_KEYRING|CARD_DEVKIT_PUBLISH_ROLE_ARN/);
   assert.match(workflow, /vars\.RUNTIME_PUBLISH_ROLE_ARN/);
-  assert.match(workflow, /\["self-hosted","Windows","X64"\]/);
+  assert.doesNotMatch(workflow, /"Windows"|platform: win-x64\b/);
 });
 
 test("Plugin SDK publication is independent from Kit signing and consumes frozen tested sources", () => {
