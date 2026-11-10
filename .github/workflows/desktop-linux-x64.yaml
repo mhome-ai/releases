@@ -1,0 +1,30 @@
+name: Release desktop linux-x64
+
+on:
+  push:
+    tags:
+      - "alx[0-9]*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Verified-source product tag, for example alx20261110-01"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  packages: write
+
+jobs:
+  run:
+    uses: ./.github/workflows/run-tagged.yaml
+    concurrency:
+      group: linux-docker-host
+      cancel-in-progress: false
+    with:
+      runner_labels: '["self-hosted","Linux","AMD64","release-linux-amd64"]'
+      channel: desktop
+      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      work_suffix: linux-x64
+    secrets: inherit

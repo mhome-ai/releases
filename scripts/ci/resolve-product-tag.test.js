@@ -62,3 +62,14 @@ test("rejects unknown tags", () => {
   assert.throws(() => resolveProductTag("d1.2.3"), /Invalid product release tag/);
   assert.throws(() => resolveProductTag("nmr20261001-00"), /YYYYMMDD-NN/);
 });
+
+
+test("Linux desktop architectures have independent tags and the same verified source suffix", () => {
+  for (const [prefix, platform] of [["alr", "linux-arm64"], ["alx", "linux-x64"]]) {
+    const resolved = resolveProductTag(`${prefix}20261110-01`);
+    assert.equal(resolved.channel, "desktop");
+    assert.equal(resolved.platform, platform);
+    assert.equal(resolved.sourceTag, "t20261110-01");
+    assert.equal(resolved.withPallas, true);
+  }
+});

@@ -153,6 +153,19 @@ test("linux native and install share one Docker host lock", () => {
   }
 });
 
+test("Linux desktops retain native runner baselines and publish each architecture independently", () => {
+  for (const [arch, label, prefix] of [["arm64", "ARM64", "alr"], ["x64", "AMD64", "alx"]]) {
+    const workflow = read(`.github/workflows/desktop-linux-${arch}.yaml`);
+    assert.ok(workflow.includes(`${prefix}[0-9]*`));
+    assert.ok(workflow.includes(`"Linux","${label}"`));
+    assert.match(workflow, /group: linux-docker-host/);
+    assert.match(workflow, /channel: desktop/);
+  }
+  assert.match(read("runners/desktop-linux/Dockerfile"), /1\.95\.0-bookworm@sha256:/);
+  for (const arch of ["arm64", "amd64"]) assert.match(read(`runners/linux-${arch}/Dockerfile`), /FROM debian:11@sha256:/);
+  assert.match(read("scripts/ci/desktop-release.sh"), /--require-linux-only --linux-arch/);
+});
+
 test("compose project publishes onto the shared install bucket", () => {
   const script = read("scripts/ci/deploy-compose.sh");
   assert.match(script, /docker\/stable\/meow-compose\.yml/);
@@ -264,7 +277,7 @@ test("linux runner entrypoints clone ~/.mhome sources at start", () => {
   assert.match(script, /git clone/);
   const inventory = require("node:child_process").execFileSync("bash",
     [path.join(ROOT, "runners/ensure-mhome-sources.sh"), "--list"], {encoding:"utf8"}).trim().split("\n");
-  assert.deepEqual(inventory, ["baycat", "integration", "meowcore-rust", "releases", "agent", "tiger", "foundation", "script"]);
+  assert.deepEqual(inventory, ["baycat", "pallas-cat", "integration", "meowcore-rust", "releases", "agent", "tiger", "foundation", "script"]);
   assert.doesNotMatch(script, /MHOME_ROOT/);
   for (const file of [
     "runners/linux-arm64/entrypoint.sh",

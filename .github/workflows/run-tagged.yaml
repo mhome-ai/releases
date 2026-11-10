@@ -56,18 +56,18 @@ jobs:
           DESKTOP_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'desktop' && vars.DESKTOP_PUBLISH_ROLE_ARN || '' }}
           RUNTIME_PUBLISH_ROLE_ARN: ${{ (inputs.channel == 'native' || inputs.channel == 'install') && vars.RUNTIME_PUBLISH_ROLE_ARN || '' }}
           NATIVE_INSTALL_PUBLISH_ROLE_ARN: ${{ (inputs.channel == 'install' || inputs.channel == 'compose') && vars.NATIVE_INSTALL_PUBLISH_ROLE_ARN || '' }}
-          APPLE_TEAM_ID: ${{ inputs.channel == 'desktop' && vars.APPLE_TEAM_ID || '' }}
+          APPLE_TEAM_ID: ${{ inputs.channel == 'desktop' && inputs.work_suffix == 'macos' && vars.APPLE_TEAM_ID || '' }}
           RUNTIME_CATALOG_PRIVATE_KEY_B64: ${{ inputs.channel == 'native' && secrets.RUNTIME_CATALOG_PRIVATE_KEY_B64 || '' }}
-          APPLE_CSC_LINK: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.APPLE_CSC_LINK || '' }}
-          APPLE_CSC_KEY_PASSWORD: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.APPLE_CSC_KEY_PASSWORD || '' }}
+          APPLE_CSC_LINK: ${{ (inputs.channel == 'native' || (inputs.channel == 'desktop' && inputs.work_suffix == 'macos')) && secrets.APPLE_CSC_LINK || '' }}
+          APPLE_CSC_KEY_PASSWORD: ${{ (inputs.channel == 'native' || (inputs.channel == 'desktop' && inputs.work_suffix == 'macos')) && secrets.APPLE_CSC_KEY_PASSWORD || '' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.channel == 'desktop' && secrets.UPDATER_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.channel == 'desktop' && secrets.UPDATER_PRIVATE_KEY_PASSWORD || '' }}
-          APPLE_ID: ${{ inputs.channel == 'desktop' && secrets.APPLE_ID || '' }}
-          APPLE_ID_PASSWORD: ${{ inputs.channel == 'desktop' && secrets.APPLE_ID_PASSWORD || '' }}
-          SSL_COM_USERNAME: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_USERNAME || '' }}
-          SSL_COM_PASSWORD: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_PASSWORD || '' }}
-          SSL_COM_CREDENTIAL_ID: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_CREDENTIAL_ID || '' }}
-          SSL_COM_TOTP_SECRET: ${{ (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.SSL_COM_TOTP_SECRET || '' }}
+          APPLE_ID: ${{ inputs.channel == 'desktop' && inputs.work_suffix == 'macos' && secrets.APPLE_ID || '' }}
+          APPLE_ID_PASSWORD: ${{ inputs.channel == 'desktop' && inputs.work_suffix == 'macos' && secrets.APPLE_ID_PASSWORD || '' }}
+          SSL_COM_USERNAME: ${{ (inputs.channel == 'native' || (inputs.channel == 'desktop' && inputs.work_suffix == 'windows')) && secrets.SSL_COM_USERNAME || '' }}
+          SSL_COM_PASSWORD: ${{ (inputs.channel == 'native' || (inputs.channel == 'desktop' && inputs.work_suffix == 'windows')) && secrets.SSL_COM_PASSWORD || '' }}
+          SSL_COM_CREDENTIAL_ID: ${{ (inputs.channel == 'native' || (inputs.channel == 'desktop' && inputs.work_suffix == 'windows')) && secrets.SSL_COM_CREDENTIAL_ID || '' }}
+          SSL_COM_TOTP_SECRET: ${{ (inputs.channel == 'native' || (inputs.channel == 'desktop' && inputs.work_suffix == 'windows')) && secrets.SSL_COM_TOTP_SECRET || '' }}
           DOCKERHUB_USERNAME: ${{ inputs.channel == 'native' && (inputs.work_suffix == 'linux-arm64' || inputs.work_suffix == 'linux-x64') && secrets.DOCKERHUB_USERNAME || '' }}
           DOCKERHUB_TOKEN: ${{ inputs.channel == 'native' && (inputs.work_suffix == 'linux-arm64' || inputs.work_suffix == 'linux-x64') && secrets.DOCKERHUB_TOKEN || '' }}
         run: |

@@ -216,7 +216,19 @@ case "$PRODUCT_PREFIX" in
       --repo "$repo" --tag "$PRODUCT_RELEASE_TAG" \
       --notes-file "$notes_file" --artifact-root release-artifacts
     ;;
-  al) fail "Linux Desktop is not enabled" ;;
+  alr|alx)
+    require_cmd docker
+    node "$CI_ROOT/linux-desktop-builder.js" "$BAYCAT_DIR" "$RELEASES_DIR"
+    case "$PRODUCT_PREFIX" in alr) linux_arch=aarch64 ;; alx) linux_arch=x86_64 ;; esac
+    node scripts/release/generate-latest-json.js \
+      --repo "$repo" --tag "$PRODUCT_RELEASE_TAG" --notes-file "$notes_file" --pub-date "$pub_date" \
+      --artifact-root release-artifacts --output release-artifacts/latest.json \
+      --require-linux-only --linux-arch "$linux_arch"
+    bash scripts/release/publish-desktop-release-gh.sh \
+      --repo "$repo" --tag "$PRODUCT_RELEASE_TAG" \
+      --notes-file "$notes_file" --artifact-root release-artifacts
+    ;;
+  al) fail "Select architecture-specific alr (ARM64) or alx (x64) desktop tag" ;;
   *) fail "unknown desktop prefix $PRODUCT_PREFIX" ;;
 esac
 

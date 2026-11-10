@@ -13,6 +13,8 @@ const NATIVE_PREFIXES = {
 const DESKTOP_PREFIXES = {
   am: "macos",
   al: "linux",
+  alr: "linux-arm64",
+  alx: "linux-x64",
   aw: "windows",
 };
 
@@ -81,7 +83,7 @@ function resolveProductTag(ref) {
       { withPallas: false, withMeowcore: true }
     );
   }
-  const desktop = /^(am|al|aw)(\d{8}-\d{2}|\d+\.\d+\.\d+)$/.exec(tag);
+  const desktop = /^(am|alr|alx|al|aw)(\d{8}-\d{2}|\d+\.\d+\.\d+)$/.exec(tag);
   if (desktop) {
     return attemptRelease(
       tag,

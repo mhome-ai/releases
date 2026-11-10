@@ -4,7 +4,7 @@
 # the SSH key lives in the runner-ssh volume and is not available at build time.
 set -euo pipefail
 
-repositories=(baycat integration meowcore-rust releases agent tiger foundation script)
+repositories=(baycat pallas-cat integration meowcore-rust releases agent tiger foundation script)
 if [[ $# == 1 && "$1" == --list ]]; then
   printf '%s\n' "${repositories[@]}"
   exit 0

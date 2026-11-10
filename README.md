@@ -30,9 +30,9 @@ repository. This git tree is the release orchestrator only.
    `~/.mhome/<repo>` stay on their default branches for Harness.
 
 One workflow run is one machine. Native `nlr`/`nlx`/`nmr`/`nmx`/`nw`, Desktop
-`am`/`aw`. Mac native ARM (`nmr`) and Intel (`nmx`) share
+`am`/`aw`/`alr`/`alx`. Mac native ARM (`nmr`) and Intel (`nmx`) share
 the Mac Mini and the `native-runtime-stable-macos` lock, so they queue. `am` and `aw` stay separate platform tags and share the
-`desktop-release` concurrency group. After a Linux Native release is public, the same workflow pushes that Host package to Docker Hub `mhomeai/meow-host` using the Native version. `latest` is published when both architectures of that version exist. This repo does not publish to GHCR. `deploy-meow-compose.yaml` publishes Baycat `docker/meow-compose.yml` to `https://install.mhome.ai/docker/stable/meow-compose.yml` on the same bucket.
+`desktop-release` concurrency group. Linux desktop ARM64 (`alr`) and x64 (`alx`) use their existing Linux runners and the `linux-docker-host` queue. Each publishes an AppImage, its updater signature and a Debian installer. They build inside the pinned Debian 12/WebKitGTK 4.1 desktop image, leaving Native's Debian 11 compatibility baseline unchanged. After a Linux Native release is public, the same workflow pushes that Host package to Docker Hub `mhomeai/meow-host` using the Native version. `latest` is published when both architectures of that version exist. This repo does not publish to GHCR. `deploy-meow-compose.yaml` publishes Baycat `docker/meow-compose.yml` to `https://install.mhome.ai/docker/stable/meow-compose.yml` on the same bucket.
 
 Signing keys are repository or org Secrets. `APPLE_TEAM_ID` and the
 publisher role ARNs are org Variables, visible to this public repo. Bucket
@@ -140,7 +140,7 @@ verified against the client's configured updater public key, `scripts/ci/publish
 promotes only the current release's feeds to
 `https://install.mhome.ai/desktop/stable/<OS-arch>/latest.json`.
 Mac `am` updates `darwin-aarch64` and `darwin-x86_64`; Windows `aw` updates
-`windows-x86_64`. Existing tags, source snapshots and the `desktop-release` queue
+`windows-x86_64`, `linux-aarch64-appimage`, `linux-aarch64-deb`, `linux-x86_64-appimage`, and `linux-x86_64-deb`. Linux updater endpoints include Tauri's bundle type so a Debian installation never downloads an AppImage update. Existing tags, source snapshots and the `desktop-release` queue
 stay in place. There is no cross-platform manifest merge or transaction.
 
 A feed cannot move to a lower app version or change package/metadata at the same
