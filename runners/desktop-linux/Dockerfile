@@ -16,7 +16,11 @@ COPY install-sccache.sh /tmp/install-sccache.sh
 RUN bash /tmp/install-sccache.sh && rm /tmp/install-sccache.sh
 COPY --chmod=755 rustc-registry-cache.py /usr/local/bin/rustc-registry-cache.py
 COPY compiler-cache-config.toml /home/runner/.config/sccache/config
-RUN useradd -m -u 1001 runner && chown -R 1001:1001 /home/runner \
+RUN useradd -m -u 1001 runner \
+    && mkdir -p /home/runner/.cache \
+    && ln -s /home/runner/.mhome/cache/desktop-tools /home/runner/.cache/tauri \
+    && printf 'cache=/home/runner/.mhome/cache/npm\n' > /home/runner/.npmrc \
+    && chown -R 1001:1001 /home/runner \
     && rustup component add clippy rustfmt \
     && chmod -R a+rX /usr/local/rustup
 USER 1001:1001

@@ -64,6 +64,9 @@ async function main() {
     ],
     { stdio: "inherit" }
   );
+  // Cache downloaded bundler tools and npm payloads in the existing source
+  // volume; compiler objects keep the separately bounded runner cache.
+  fs.mkdirSync("/home/runner/.mhome/cache/desktop-tools", { recursive: true });
   const name = `meow-desktop-${path.basename(work)}`;
   if (!/^[a-zA-Z0-9_.-]+$/.test(name))
     throw new Error("Invalid owned container name");
