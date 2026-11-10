@@ -50,6 +50,10 @@ async function main() {
     throw new Error("Unsupported desktop runner architecture");
   const platform = process.arch === "arm64" ? "linux/arm64" : "linux/amd64";
   const image = `meow-desktop-builder:${process.arch}`;
+  run(["buildx", "version"]);
+  if (!/^Driver:\s+docker\s*$/m.test(run(["buildx", "inspect"]))) {
+    throw new Error("Linux desktop must use the Docker daemon builder and its prepared image cache");
+  }
   execFileSync(
     "docker",
     [

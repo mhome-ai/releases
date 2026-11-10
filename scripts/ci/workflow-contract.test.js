@@ -98,7 +98,7 @@ test("Linux native images use a disposable builder with local image loading", ()
   assert.match(text, /driver-opts: default-load=true/);
   assert.match(text, /keep-state: false/);
   assert.match(text, /cleanup: true/);
-  assert.match(text, /BUILDX_BUILDER: \$\{\{ steps\.buildx\.outputs\.name \}\}/);
+  assert.match(text, /BUILDX_BUILDER:.*steps\.desktop-buildx\.outputs\.name \|\| steps\.buildx\.outputs\.name/);
 });
 
 test("product docker catalogs and appliance tags are gone", () => {

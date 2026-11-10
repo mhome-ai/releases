@@ -140,8 +140,13 @@ verified against the client's configured updater public key, `scripts/ci/publish
 promotes only the current release's feeds to
 `https://install.mhome.ai/desktop/stable/<OS-arch>/latest.json`.
 Mac `am` updates `darwin-aarch64` and `darwin-x86_64`; Windows `aw` updates
-`windows-x86_64`, `linux-aarch64-appimage`, `linux-aarch64-deb`, `linux-x86_64-appimage`, and `linux-x86_64-deb`. Linux updater endpoints include Tauri's bundle type so a Debian installation never downloads an AppImage update. Existing tags, source snapshots and the `desktop-release` queue
-stay in place. There is no cross-platform manifest merge or transaction.
+`windows-x86_64`. Linux `alr` updates `linux-aarch64-appimage` and
+`linux-aarch64-deb`; `alx` updates `linux-x86_64-appimage` and `linux-x86_64-deb`.
+Linux updater endpoints include Tauri's bundle type so a Debian installation never
+downloads an AppImage update. Linux desktop image builds reuse the Docker daemon's
+prepared BuildKit cache; native builds retain their separate disposable builders.
+Existing source snapshots and platform queues stay in place. There is no
+cross-platform manifest merge or transaction.
 
 A feed cannot move to a lower app version or change package/metadata at the same
 version. Exact retries leave the object unchanged and verify the public address.
