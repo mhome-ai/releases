@@ -72,6 +72,15 @@ async function main() {
     "--rm",
     "--platform",
     platform,
+    // WebKit creates unprivileged user namespaces. Docker's default seccomp
+    // blocks those syscalls; retain WebKit's sandbox and remove all container
+    // capabilities instead of disabling the browser sandbox for acceptance.
+    "--cap-drop",
+    "ALL",
+    "--security-opt",
+    "seccomp=unconfined",
+    "--security-opt",
+    "no-new-privileges=true",
     "--name",
     name,
     ...mounts,
