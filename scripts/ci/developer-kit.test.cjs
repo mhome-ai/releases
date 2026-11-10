@@ -7,6 +7,19 @@ const crypto = require("node:crypto");
 const { publish, promoteIndex, verifySource } = require("./developer-kit.cjs");
 const hash = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
 
+test("acceptance retains the real npm script shell without a system Node on PATH", async (t) => {
+  const {isolatedSystemTools} = require('./developer-kit-accept.cjs');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-system-tools-'));
+  t.after(() => fs.rmSync(directory, {recursive:true, force:true}));
+  const tools = await isolatedSystemTools(directory);
+  assert.deepEqual(fs.readdirSync(tools), ['sh']);
+  const result = require('node:child_process').spawnSync('sh', ['-c',
+    'if command -v node || command -v npm; then exit 1; fi; printf shell-ready'],
+    {env:{...process.env, PATH:tools}, encoding:'utf8'});
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, 'shell-ready');
+});
+
 test("first publication reads authenticated S3 state and rejects permission or transport uncertainty", async (t) => {
   const {readExistingManifest} = require("./developer-kit.cjs");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "developer-kit-existing-"));

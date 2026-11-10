@@ -9,6 +9,14 @@ const {
   run,
   exact,
 } = require("./developer-kit.cjs");
+async function isolatedSystemTools(directory) {
+  const tools = path.join(directory, "system-tools");
+  await fs.mkdir(tools);
+  // npm run requires the OS shell. Advertised Mac/Linux platforms retain that
+  // real tool, while Node/npm must still come from the installed Kit.
+  await fs.symlink("/bin/sh", path.join(tools, "sh"));
+  return tools;
+}
 async function accept(kit, version, platform, directory) {
   exact(version);
   await fs.mkdir(directory, { recursive: true });
@@ -44,7 +52,7 @@ async function accept(kit, version, platform, directory) {
     "Native Client package must contain its standard CLI entrypoint"
   );
   const home = path.join(directory, "home");
-  const env = { ...process.env, PATH: "" };
+  const env = { ...process.env, PATH: await isolatedSystemTools(directory) };
   delete env.NODE_PATH;
   delete env.NODE_OPTIONS;
   const call = (...args) =>
@@ -183,7 +191,7 @@ async function acceptDomain({kit,version,directory,manifest,manifestBytes,home,n
     // This offline fixture validates the installed generator/checker, not live Hub access or SDK delivery.
   }
 }
-module.exports = { accept, acceptUiProjects };
+module.exports = { accept, acceptUiProjects, isolatedSystemTools };
 if (require.main === module)
   accept(...process.argv.slice(2)).catch((error) => {
     console.error(error);

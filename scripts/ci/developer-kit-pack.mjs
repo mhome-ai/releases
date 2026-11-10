@@ -10,7 +10,8 @@ export async function pack(kit,source,output,tag,commit) {
   await verifySource(source,{kit,tag,commit});
   source=path.resolve(source);output=path.resolve(output);
   if(kit==='ui') {
-    run('npm',['ci','--prefix','tools/card-devkit','--omit=optional','--ignore-scripts','--no-bin-links','--workspaces=false'],{cwd:source});
+    run('npm',['ci','--prefix','tools/card-devkit','--userconfig',path.join(source,'.npmrc'),
+      '--omit=optional','--ignore-scripts','--no-bin-links','--workspaces=false'],{cwd:source});
     const {packDevkit}=await import(pathToFileURL(path.join(source,'script/cards/pack-devkit.cjs')));
     return packDevkit(output,{sourceTag:tag,sourceCommit:commit});
   }
