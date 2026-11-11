@@ -58,18 +58,17 @@ RUN curl -fsSL "https://github.com/jedisct1/minisign/releases/download/${MINISIG
     && chmod 755 /usr/local/bin/minisign \
     && rm -rf /tmp/minisign.tar.gz /tmp/minisign-linux
 
-ARG NODE_VERSION=22.22.2
+# Node 22 security release; archive SHA-256 is pinned from its signed SHASUMS.
+ARG NODE_VERSION=22.23.4
 RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-arm64.tar.xz" \
       -o /tmp/node.tar.xz \
-    && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt" -o /tmp/SHASUMS256.txt \
-    && awk -v f="node-v${NODE_VERSION}-linux-arm64.tar.xz" '$2==f {print $1 "  /tmp/node.tar.xz"}' /tmp/SHASUMS256.txt \
-      | sha256sum -c - \
+    && echo "6287aa46b6c375d816e63ae66d024fbbfd70404825aabdfdf898a970871d2f4b  /tmp/node.tar.xz" | sha256sum -c - \
     && mkdir -p /usr/local/lib/nodejs \
     && tar -xJf /tmp/node.tar.xz -C /usr/local/lib/nodejs \
     && ln -s "/usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-arm64/bin/node" /usr/local/bin/node \
     && ln -s "/usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-arm64/bin/npm" /usr/local/bin/npm \
     && ln -s "/usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-arm64/bin/npx" /usr/local/bin/npx \
-    && rm -f /tmp/node.tar.xz /tmp/SHASUMS256.txt
+    && rm -f /tmp/node.tar.xz
 
 ARG GH_VERSION=2.100.0
 RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_arm64.tar.gz" \

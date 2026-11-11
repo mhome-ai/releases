@@ -6,12 +6,17 @@ RUN apt-get -o Acquire::Retries=3 update \
       libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
       libssl-dev patchelf squashfs-tools xdg-utils dbus-x11 xvfb xauth x11-utils \
     && rm -rf /var/lib/apt/lists/*
-RUN set -eu; case "$(dpkg --print-architecture)" in arm64) arch=arm64;; amd64) arch=x64;; *) exit 1;; esac; \
-    curl -fsSL --retry 3 "https://nodejs.org/dist/v22.22.2/node-v22.22.2-linux-${arch}.tar.xz" -o /tmp/node.tar.xz; \
-    curl -fsSL --retry 3 https://nodejs.org/dist/v22.22.2/SHASUMS256.txt -o /tmp/SHASUMS256.txt; \
-    awk -v f="node-v22.22.2-linux-${arch}.tar.xz" '$2==f {print $1 "  /tmp/node.tar.xz"}' /tmp/SHASUMS256.txt | sha256sum -c -; \
+# Node 22 security release; archive SHA-256 values are pinned from its signed SHASUMS.
+ARG NODE_VERSION=22.23.4
+RUN set -eu; case "$(dpkg --print-architecture)" in \
+      arm64) arch=arm64; sha256=6287aa46b6c375d816e63ae66d024fbbfd70404825aabdfdf898a970871d2f4b;; \
+      amd64) arch=x64; sha256=1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce;; \
+      *) exit 1;; \
+    esac; \
+    curl -fsSL --retry 3 "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${arch}.tar.xz" -o /tmp/node.tar.xz; \
+    echo "${sha256}  /tmp/node.tar.xz" | sha256sum -c -; \
     tar -xJf /tmp/node.tar.xz --strip-components=1 -C /usr/local; \
-    rm /tmp/node.tar.xz /tmp/SHASUMS256.txt
+    rm /tmp/node.tar.xz
 COPY install-sccache.sh /tmp/install-sccache.sh
 RUN bash /tmp/install-sccache.sh && rm /tmp/install-sccache.sh
 COPY --chmod=755 rustc-registry-cache.py /usr/local/bin/rustc-registry-cache.py
