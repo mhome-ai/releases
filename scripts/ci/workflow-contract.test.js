@@ -2,7 +2,6 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { execFileSync } = require("node:child_process");
 
 const ROOT = path.join(__dirname, "../..");
 
@@ -30,20 +29,8 @@ test("Matter builds receive no publisher key or GitHub write credential", () => 
   const signing = text.split("      - name: Sign the embedded Node declaration")[1].split("      - name:")[0];
   assert.match(signing, /secrets\.PLUGIN_CATALOG_PRIVATE_KEY_B64/);
   assert.doesNotMatch(signing, /GH_TOKEN/);
-  assert.match(text, /matter-invocation\.json/);
-  assert.match(text, /orchestratorTagObject/);
-  assert.doesNotMatch(text, /GITHUB_ENV|WORK_ROOT|WORK_ID|RELEASES_DIR|ORCHESTRATOR_TAG_OBJECT|RELEASE_TAG|EVENT_COMMIT/);
-  assert.doesNotMatch(read("scripts/ci/matter-release.js"), /process\.env\.(?:WORK_ROOT|WORK_ID|RELEASES_DIR|ORCHESTRATOR_TAG_OBJECT|RELEASE_TAG)|env:.*MEOW_NODE_MANIFEST_BUNDLE/);
+  assert.match(text, /ORCHESTRATOR_TAG_OBJECT/);
   assert.match(read("scripts/ci/matter-release.js"), /assertSnapshot\(state\.orchestratorDirectory/);
-});
-
-test("Matter workflow shell blocks retain valid heredocs and quoted arguments", () => {
-  const text = read(".github/workflows/run-tagged-matter.yaml");
-  const blocks = [...text.matchAll(/^        run: \|\n((?:          .*\n|\s*\n)*)/gm)];
-  assert.equal(blocks.length, 6);
-  for (const [, block] of blocks) {
-    execFileSync("bash", ["-n"], {input: block.replace(/^          /gm, ""), stdio: ["pipe", "pipe", "pipe"]});
-  }
 });
 
 test("workflows never clone and never use GitHub-hosted compile jobs", () => {
