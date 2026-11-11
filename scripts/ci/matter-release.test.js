@@ -12,7 +12,7 @@ const test = require("node:test");
 const { prepareMatterSources, assertSnapshot, git } = require("./prepare-matter-sources");
 const { cleanupReleaseSources } = require("./cleanup-release-sources");
 const { resolveProductTag } = require("./resolve-product-tag");
-const { selectRelease, archiveAsset } = require("./matter-release");
+const { selectRelease, archiveAsset, context, readInvocation } = require("./matter-release");
 
 function temporary(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "matter-release-test-"));
@@ -41,6 +41,40 @@ function repository(root, name, tag, files = {}, annotated = true) {
   git(seed, "remote", "add", "origin", origin);
   return { directory: seed, origin, revision: git(seed, "rev-parse", "HEAD"), tag, tagObject: git(seed, "rev-parse", tag) };
 }
+
+test("release context requires an explicit absolute run directory", () => {
+  assert.throws(() => context(), /absolute owned release directory/);
+  assert.throws(() => context("relative"), /absolute owned release directory/);
+  const root = path.join(os.tmpdir(), "owned matter run");
+  assert.equal(context(root).stateFile, path.join(root, "matter-release.json"));
+});
+
+test("invocation file binds the selected tag to this run and a full tag object", t => {
+  const root = temporary(t);
+  const identity = {tag: "mec520261111-01", workId: path.basename(root), orchestratorTagObject: "a".repeat(40)};
+  write(root, "matter-invocation.json", JSON.stringify(identity));
+  assert.equal(readInvocation(context(root)).product.sourceTag, "t20261111-01");
+  for (const change of [{workId: "other-run"}, {orchestratorTagObject: "short"}, {tag: "mec520261111-00"}]) {
+    write(root, "matter-invocation.json", JSON.stringify({...identity, ...change}));
+    assert.throws(() => readInvocation(context(root)));
+  }
+});
+
+test("Matter workflow reads trigger data without shell interpolation", t => {
+  const root = temporary(t);
+  const workflow = fs.readFileSync(path.join(__dirname, "../../.github/workflows/run-tagged-matter.yaml"), "utf8");
+  const program = workflow.match(/tag="\$\(node -[^\n]+<<'NODE'\n([\s\S]*?)^\s+NODE/m)[1];
+  const eventFile = path.join(root, "event.json");
+  const read = (event, name) => {
+    fs.writeFileSync(eventFile, JSON.stringify(event));
+    return execFileSync(process.execPath, ["-", eventFile, name], {input: program, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"]}).trim();
+  };
+  assert.equal(read({inputs: {tag: "mec520261111-01"}}, "workflow_dispatch"), "mec520261111-01");
+  assert.equal(read({ref: "refs/tags/mec520261111-02"}, "push"), "mec520261111-02");
+  assert.throws(() => read({ref: "refs/heads/main"}, "push"));
+  assert.throws(() => read({inputs: {tag: "mec520261111-01\n$(touch should-not-exist)"}}, "workflow_dispatch"));
+  assert.throws(() => read({}, "pull_request"));
+});
 
 test("real GitHub CLI reads every release page and handles an empty result", async t => {
   const root = temporary(t);
@@ -150,7 +184,7 @@ test("publication verifies uploads, preserves public bytes and retries without r
   const root = temporary(t);
   const source = repository(root, "source", "t20261026-01", {
     "scripts/package-firmware.py": 'import pathlib, sys\na=sys.argv\np=pathlib.Path(a[a.index("--archive")+1])\nif a[1] == "pack": p.write_bytes(b"verified firmware")\nassert p.read_bytes() == b"verified firmware"\n',
-    "scripts/build.sh": '#!/usr/bin/env bash\nset -euo pipefail\nmkdir -p build/release-psram_ble\nprintf "fixture compiler output\\n"\n',
+    "scripts/build.sh": '#!/usr/bin/env bash\nset -euo pipefail\n[[ "$1" = psram_ble && "$2" = --bundle && -n "$3" ]]\n[[ -z "${MEOW_NODE_MANIFEST_BUNDLE:-}${MEOW_NODE_BUILD_MODE:-}" ]]\nmkdir -p build/release-psram_ble\nprintf "fixture compiler output\\n"\n',
   });
   const orchestrator = repository(root, "orchestrator", "mec520261026-01");
   const archive = write(root, "firmware.tar.gz", "verified firmware");
@@ -162,7 +196,7 @@ test("publication verifies uploads, preserves public bytes and retries without r
   write(root, "gh-state.json", "[]");
   const gh = write(root, "bin/gh", `#!${process.execPath}\n` + `
 const fs = require('node:fs'), path = require('node:path');
-const root = process.env.MATTER_TEST_ROOT, args = process.argv.slice(2), db = path.join(root, 'gh-state.json');
+const root = ${JSON.stringify(root)}, args = process.argv.slice(2), db = path.join(root, 'gh-state.json');
 const releases = JSON.parse(fs.readFileSync(db));
 fs.appendFileSync(path.join(root, 'gh-calls.jsonl'), JSON.stringify(args) + '\\n');
 if (args[0] === 'api') {
@@ -179,10 +213,10 @@ else throw Error('unexpected gh command ' + args);
 fs.writeFileSync(db, JSON.stringify(releases));
 `);
   fs.chmodSync(gh, 0o755);
-  const env = { ...process.env, WORK_ROOT: root, MATTER_TEST_ROOT: root,
+  const env = { ...process.env,
     PATH: `${path.dirname(gh)}:${process.env.PATH}`, GITHUB_REPOSITORY: "test/releases" };
   for (const name of ["PLUGIN_CATALOG_PRIVATE_KEY_B64", "MEOW_NODE_TEST_PUBLIC_KEY", "GH_TOKEN", "GITHUB_TOKEN"]) delete env[name];
-  const execute = action => execFileSync(process.execPath, [path.join(__dirname, "matter-release.js"), action], { env, stdio: "pipe" });
+  const execute = action => execFileSync(process.execPath, [path.join(__dirname, "matter-release.js"), action, root], { env, stdio: "pipe" });
   execute("sign"); execute("build"); // Reuse needs neither signing credentials nor a toolchain.
   fs.writeFileSync(path.join(root, "matter-release.json"), JSON.stringify({ ...state, reuse: false }));
   fs.unlinkSync(archive);

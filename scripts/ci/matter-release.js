@@ -36,10 +36,19 @@ function archiveAsset(release, assetName) {
   return asset || null;
 }
 
-function context() {
-  const root = process.env.WORK_ROOT;
-  if (!root || !path.isAbsolute(root)) throw new Error("WORK_ROOT must be an absolute owned release directory");
+function context(root) {
+  if (!root || !path.isAbsolute(root)) throw new Error("Pass an absolute owned release directory as the second argument");
   return { root, stateFile: path.join(root, "matter-release.json"), repo: process.env.GITHUB_REPOSITORY || "mhome-ai/releases" };
+}
+
+function readInvocation(ctx) {
+  const invocation = json(path.join(ctx.root, "matter-invocation.json"));
+  if (invocation.workId !== path.basename(ctx.root) || !/^[a-f0-9]{40}$/.test(invocation.orchestratorTagObject || "")) {
+    throw new Error("Invalid Matter invocation identity");
+  }
+  const product = resolveProductTag(invocation.tag);
+  if (product.channel !== "matter") throw new Error("Expected a mec5 Matter release tag");
+  return { invocation, product };
 }
 
 function listReleases(repo) {
@@ -76,15 +85,14 @@ function verifyDownloaded(state, asset, destination, repo) {
 
 function prepare(ctx) {
   if (fs.existsSync(ctx.stateFile)) throw new Error("Release state already exists");
-  const product = resolveProductTag(process.env.RELEASE_TAG);
-  if (product.channel !== "matter") throw new Error("Expected a mec5 Matter release tag");
-  const source = prepareMatterSources({ tag: product.sourceTag, workId: process.env.WORK_ID });
+  const { invocation, product } = readInvocation(ctx);
+  const source = prepareMatterSources({ tag: product.sourceTag, workId: invocation.workId });
   const version = fs.readFileSync(path.join(source.directory, "version.txt"), "utf8").trim();
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version) || version.length > 31) throw new Error("Invalid firmware version.txt (maximum 31 characters)");
-  const orchestratorDirectory = process.env.RELEASES_DIR;
+  const orchestratorDirectory = path.resolve(__dirname, "../..");
   const state = { source, version, tag: product.releaseTag, orchestratorDirectory,
     orchestrator: git(orchestratorDirectory, "rev-parse", "HEAD"),
-    orchestratorTagObject: process.env.ORCHESTRATOR_TAG_OBJECT,
+    orchestratorTagObject: invocation.orchestratorTagObject,
     assetName: `meowlink-matter-esp32c5-${version}.tar.gz`, reuse: false };
   const artifacts = path.join(ctx.root, "matter-artifacts");
   fs.mkdirSync(artifacts);
@@ -124,8 +132,8 @@ function build(state) {
   for (const key of ["PLUGIN_CATALOG_PRIVATE_KEY_B64", "MEOW_NODE_TEST_PUBLIC_KEY", "GH_TOKEN", "GITHUB_TOKEN"]) {
     if (process.env[key]) throw new Error(`Unexpected credential or test trust in build step: ${key}`);
   }
-  run("bash", ["scripts/build.sh", "psram_ble"], { cwd: state.source.directory, stdio: "inherit",
-    env: { ...process.env, MEOW_NODE_BUILD_MODE: "release", MEOW_NODE_MANIFEST_BUNDLE: state.bundle } });
+  run("bash", ["scripts/build.sh", "psram_ble", "--bundle", state.bundle],
+    { cwd: state.source.directory, stdio: "inherit" });
   assertSource(state);
   run("python3", [...packageArgs(state, "pack"), "--build", path.join(state.source.directory, "build/release-psram_ble"),
     "--bundle", state.bundle]);
@@ -163,8 +171,9 @@ function publish(ctx, state) {
   console.log(`Verified Matter release ${state.tag}, firmware ${state.version}`);
 }
 
-function main(action) {
-  const ctx = context();
+function main(action, root) {
+  if (!["prepare", "sign", "build", "publish"].includes(action)) throw new Error("Expected prepare, sign, build or publish");
+  const ctx = context(root);
   if (action === "prepare") return prepare(ctx);
   const state = json(ctx.stateFile);
   if (action === "sign") return sign(state);
@@ -172,7 +181,7 @@ function main(action) {
   if (action === "publish") return publish(ctx, state);
   throw new Error("Expected prepare, sign, build or publish");
 }
-module.exports = { selectRelease, archiveAsset, packageArgs, listReleases };
+module.exports = { selectRelease, archiveAsset, packageArgs, listReleases, context, readInvocation };
 if (require.main === module) {
-  try { main(process.argv[2]); } catch (error) { console.error(error.message); process.exitCode = 1; }
+  try { main(process.argv[2], process.argv[3]); } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

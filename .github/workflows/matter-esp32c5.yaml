@@ -20,7 +20,4 @@ jobs:
     concurrency:
       group: native-runtime-stable-macos
       cancel-in-progress: false
-    with:
-      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-      event_commit: ${{ github.event_name == 'push' && github.sha || '' }}
     secrets: inherit

@@ -74,6 +74,9 @@ matching `t`. Manual dispatch accepts that existing release tag and uses its
 orchestrator commit too. The workflow refuses absent/lightweight/moved tags and
 source outside `origin/main`; it never falls back to `r` or the latest source.
 Source and orchestrator use sibling worktrees under `~/.mhome/work/<run>/`.
+The original push/dispatch event selects the tag. A run-owned
+`matter-invocation.json` records that identity; phase commands take the run directory
+as an argument, and firmware compilation takes `--bundle <signed-manifest>`.
 
 The existing `release-macos-primary` runner requires pre-provisioned
 `~/.mhome/{releases,meow-matter-esp}`, read access to both repositories, Node 20+,
