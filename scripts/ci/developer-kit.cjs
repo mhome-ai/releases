@@ -18,6 +18,11 @@ const exact = (version) => {
     throw new Error("Expected exact version");
   return version;
 };
+const compareVersions = (a, b) => {
+  const aa = a.split(".").map(Number),
+    bb = b.split(".").map(Number);
+  return aa[0] - bb[0] || aa[1] - bb[1] || aa[2] - bb[2];
+};
 async function download(url) {
   if (new URL(url).protocol !== "https:")
     throw new Error("Download requires HTTPS");
@@ -190,6 +195,11 @@ async function prepare(
   kitId(built.kit);
   exact(built.version);
   exact(cliVersion);
+  exact(built.minimumCliVersion);
+  if (compareVersions(cliVersion, built.minimumCliVersion) < 0)
+    throw new Error(
+      `Kit requires meow ${built.minimumCliVersion} or later; requested ${cliVersion}`
+    );
   if (!built.source || !/^[a-f0-9]{40}$/.test(orchestratorCommit || ""))
     throw new Error("Missing frozen source provenance");
   const nodeBase = `https://nodejs.org/dist/v${config.nodeVersion}`;
@@ -310,11 +320,7 @@ function promoteIndex(index, entry) {
   if (old && JSON.stringify(old) !== JSON.stringify(entry))
     throw new Error("Published DevKit version changed");
   const versions = old ? [...index.versions] : [...index.versions, entry];
-  versions.sort((a, b) => {
-    const aa = a.version.split(".").map(Number),
-      bb = b.version.split(".").map(Number);
-    return aa[0] - bb[0] || aa[1] - bb[1] || aa[2] - bb[2];
-  });
+  versions.sort((a, b) => compareVersions(a.version, b.version));
   return {
     schemaVersion: 1,
     kind: "meow.developer-kit.index",

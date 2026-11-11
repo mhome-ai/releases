@@ -17,6 +17,24 @@ async function isolatedSystemTools(directory) {
   await fs.symlink("/bin/sh", path.join(tools, "sh"));
   return tools;
 }
+// These documented commands must work without a signed-in App or daemon.
+function assertUiPreviewCommands(help) {
+  const commands = {
+    inspect: ["space", "card"],
+    apply: ["space", "base-ui", "card", "pattern", "renderer", "config"],
+    status: ["space", "base-ui"],
+    stop: ["space", "base-ui", "card", "pattern"],
+  };
+  for (const [command, options] of Object.entries(commands)) {
+    const output = help("preview", command, "--help");
+    for (const option of options)
+      assert.match(
+        output,
+        new RegExp(`(?:^|\\s)--${option}(?=[=\\s]|$)`),
+        `meow make ui card preview ${command} must support --${option}`
+      );
+  }
+}
 async function accept(kit, version, platform, directory) {
   exact(version);
   await fs.mkdir(directory, { recursive: true });
@@ -60,6 +78,10 @@ async function accept(kit, version, platform, directory) {
       run(binary, ["--home", home, "make", "ui", "card", ...args], { env })
     );
   assert.equal(run(binary, ["--version"], { env }), `meow ${cli.version}`);
+  if (kit === "ui")
+    assertUiPreviewCommands((...args) =>
+      run(binary, ["--home", home, "make", "ui", "card", ...args], { env })
+    );
   const make=(...args)=>JSON.parse(run(binary,["--home",home,"make",...args],{env}));
   assert.equal(make("kit","status",kit).platform,platform);
   make("kit","install",kit,"--version",version);
@@ -191,7 +213,7 @@ async function acceptDomain({kit,version,directory,manifest,manifestBytes,home,n
     // This offline fixture validates the installed generator/checker, not live Hub access or SDK delivery.
   }
 }
-module.exports = { accept, acceptUiProjects, isolatedSystemTools };
+module.exports = { accept, acceptUiProjects, isolatedSystemTools, assertUiPreviewCommands };
 if (require.main === module)
   accept(...process.argv.slice(2)).catch((error) => {
     console.error(error);

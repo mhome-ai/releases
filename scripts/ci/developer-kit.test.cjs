@@ -7,6 +7,49 @@ const crypto = require("node:crypto");
 const { publish, promoteIndex, verifySource } = require("./developer-kit.cjs");
 const hash = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
 
+test("UI acceptance rejects missing single-card commands without contacting an App", () => {
+  const { assertUiPreviewCommands } = require("./developer-kit-accept.cjs");
+  const usage = {
+    inspect: "--space <SPACE> --card <CARD>",
+    apply: "--space <SPACE> --base-ui <BASE> --card <CARD> --pattern <PATTERN> --renderer <RENDERER> --config <JSON>",
+    status: "--space <SPACE> --base-ui <BASE>",
+    stop: "--space <SPACE> --base-ui <BASE> --card <CARD> --pattern <PATTERN>",
+  };
+  const calls = [];
+  const help = (...args) => {
+    calls.push(args);
+    assert.equal(args[0], "preview");
+    assert.equal(args[2], "--help");
+    return usage[args[1]];
+  };
+  assert.doesNotThrow(() => assertUiPreviewCommands(help));
+  assert.equal(calls.length, 4);
+  assert.throws(() => assertUiPreviewCommands((_, command) => {
+    if (command === "inspect") throw new Error("unknown subcommand inspect");
+    return usage[command];
+  }), /unknown subcommand/);
+  for (const command of ["apply", "stop"])
+    assert.throws(() => assertUiPreviewCommands((_, name) =>
+      name === command ? usage[name].replace("--card <CARD>", "--cardinality <N>") : usage[name]
+    ), new RegExp(`${command} must support --card`));
+});
+
+test("an incompatible CLI is rejected before Node downloads or candidate publication", async (t) => {
+  const { prepare } = require("./developer-kit.cjs");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kit-cli-minimum-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, "kit-build.json"), JSON.stringify({
+    kit: "ui", version: "3.2.2", minimumCliVersion: "1.15.0",
+    source: { tag: "kit-ui-v3.2.2", commit: "a".repeat(40) },
+  }));
+  let downloads = 0;
+  await assert.rejects(prepare(root, {
+    cliVersion: "1.9.4", orchestratorCommit: "b".repeat(40),
+    downloadFile: async () => { downloads++; throw new Error("unexpected download"); },
+  }), /requires meow 1\.15\.0 or later; requested 1\.9\.4/);
+  assert.equal(downloads, 0);
+});
+
 test("acceptance retains the real npm script shell without a system Node on PATH", async (t) => {
   const {isolatedSystemTools} = require('./developer-kit-accept.cjs');
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-system-tools-'));
