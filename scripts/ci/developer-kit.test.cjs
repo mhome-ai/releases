@@ -7,6 +7,22 @@ const crypto = require("node:crypto");
 const { publish, promoteIndex, verifySource } = require("./developer-kit.cjs");
 const hash = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
 
+test("Extension acceptance compiles UI files with their required entry manifest", async t => {
+  const {addExtensionUiFixture} = require("./developer-kit-accept.cjs");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kit-extension-ui-"));
+  t.after(() => fs.rmSync(root, {recursive:true, force:true}));
+  const descriptor={schemaVersion:1,projectId:"fixture",integrations:[{id:"test.device",schemaRoot:"schema",scriptProject:"ts",tests:"ts/tests"}]};
+  fs.writeFileSync(path.join(root,"extension.json"),JSON.stringify(descriptor));
+  await addExtensionUiFixture(root);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root,"extension.json"))),{...descriptor,ui:"ui"});
+  const output=path.join(root,"compiled");fs.mkdirSync(output);
+  require("node:child_process").execFileSync(process.execPath,[path.join(root,"ui/build.cjs"),"--output",output]);
+  const manifest=JSON.parse(fs.readFileSync(path.join(output,"manifest.json")));
+  assert.equal(manifest.formatVersion,1);
+  assert.equal(manifest.page.entry,"main");
+  assert.equal(fs.readFileSync(path.join(output,manifest.entries.main),"utf8"),"export const ready=true;");
+});
+
 test("UI acceptance rejects missing single-card commands without contacting an App", () => {
   const { assertUiPreviewCommands } = require("./developer-kit-accept.cjs");
   const usage = {

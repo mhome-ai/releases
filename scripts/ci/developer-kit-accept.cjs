@@ -172,34 +172,29 @@ async function acceptUiProjects({directory,version,manifestBytes,call}) {
 }
 async function acceptDomain({kit,version,directory,manifest,manifestBytes,home,node,env,make}) {
   const project=path.join(directory,"project"),output=path.join(directory,"generated");
-  await fs.mkdir(project);
   const installed=path.join(home,"tools/make/kits",kit,version,"kit");
   if(kit==="extension") {
-    await fs.mkdir(path.join(project,"schema"));await fs.mkdir(path.join(project,"tests"));
-    await fs.writeFile(path.join(project,"schema/test-device.yml"),"integration:\n  domain: test\n  entity: device\n");
-    await fs.writeFile(path.join(project,"schema/test-device-state-value.yml"),"capability:\n  domain: test\n  entity: device\n  method: state\n  capability: value\n  implementation:\n    script: {name: double, args: [\"$req\"]}\n");
-    await fs.writeFile(path.join(project,"extension.json"),JSON.stringify({schemaVersion:1,projectId:"test",ui:"ui",integrations:[{id:"test.device",schemaRoot:"schema",scriptProject:".",tests:"tests"}]}));
-    await fs.mkdir(path.join(project,"ui"));
-    await fs.writeFile(path.join(project,"ui/package.json"),JSON.stringify({private:true,scripts:{"build:extension":"node build.cjs"}}));
-    await fs.writeFile(path.join(project,"ui/build.cjs"),"const fs=require('node:fs'),path=require('node:path');fs.writeFileSync(path.join(process.argv[process.argv.indexOf('--output')+1],'index.js'),'export const ready=true;');");
-    const source=JSON.parse(await fs.readFile(path.join(installed,"package.json")));
-    await fs.writeFile(path.join(project,"package.json"),JSON.stringify({private:true,devDependencies:{"@mhome/script-build":source.dependencies["@mhome/script-build"]}}));
-    await fs.writeFile(path.join(project,"double.ts"),"export default (n:number)=>n*2;");
-    await fs.writeFile(path.join(project,"tests/behavior.test.mjs"),"import test from 'node:test';import assert from 'node:assert/strict';import {loadScript} from '@mhome/script-build/testing';test('behavior',async()=>assert.equal(await loadScript('double')([21]),42));");
-    make("kit","use",kit,"--version",version,"--project",project);
-    // The Kit manager owns Node/npm; authors keep ordinary exact dependencies.
-    make("kit","deps",kit,"add","--project",project);
+    make("extension","init",project,"--kit-version",version,"--integration","test.device");
+    const pin=JSON.parse(await fs.readFile(path.join(project,"meow.make.json")));
+    assert.equal(pin.kits.extension.version,version);
+    const lock=JSON.parse(await fs.readFile(path.join(project,"ts/package-lock.json")));
+    assert.equal(lock.lockfileVersion,3);
+    // Restore from the generated lock, then use the same public tests as authors.
+    make("kit","deps",kit,"install","--project",project,"--directory","ts");
+    await addExtensionUiFixture(project);
     make("kit","deps",kit,"add","--project",project,"--directory","ui");
     make("extension","validate","--project",project);
     make("extension","test","--project",project,"--integration","test.device");
     const result=make("extension","build","--project",project,"--integration","test.device","--output",output);
-    assert.equal(result.functions[0].function,"double");
-    assert.equal((await fs.stat(path.join(output,"double.js"))).isFile(),true);
+    assert.deepEqual(result.functions.map(f=>f.function).sort(),["connect","fetchConnectInfo","fetchDevices"]);
+    assert.equal((await fs.stat(path.join(output,"fetchDevices.js"))).isFile(),true);
     const uiOutput=`${output}-ui`;
     const uiResult=make("extension","ui-build","--project",project,"--output",uiOutput);
     assert(uiResult.files.some(file=>file.path==="index.js"));
+    assert(uiResult.files.some(file=>file.path==="manifest.json"));
     assert.equal(await fs.readFile(path.join(uiOutput,"index.js"),"utf8"),"export const ready=true;");
   } else {
+    await fs.mkdir(project);
     for(const [name,target] of [["contracts.fixture.json","wave.contracts.json"],["bindings.fixture.json","wave.bindings.json"]]) {
       const file=manifest.files.find(item=>item.path===name);assert(file);
       const bytes=await download(`${BASE}/${kit}/${version}/${name}`);
@@ -213,7 +208,19 @@ async function acceptDomain({kit,version,directory,manifest,manifestBytes,home,n
     // This offline fixture validates the installed generator/checker, not live Hub access or SDK delivery.
   }
 }
-module.exports = { accept, acceptUiProjects, isolatedSystemTools, assertUiPreviewCommands };
+async function addExtensionUiFixture(project) {
+  const descriptor=JSON.parse(await fs.readFile(path.join(project,"extension.json")));
+  descriptor.ui="ui";
+  await fs.writeFile(path.join(project,"extension.json"),JSON.stringify(descriptor));
+  await fs.mkdir(path.join(project,"ui"));
+  await fs.writeFile(path.join(project,"ui/package.json"),JSON.stringify({private:true,license:"Apache-2.0",scripts:{"build:extension":"node build.cjs"}}));
+  const manifest={formatVersion:1,entries:{main:"index.js"},page:{entry:"main",title:"Fixture"}};
+  await fs.writeFile(path.join(project,"ui/build.cjs"),
+    "const fs=require('node:fs'),path=require('node:path'),output=process.argv[process.argv.indexOf('--output')+1];"+
+    "fs.writeFileSync(path.join(output,'index.js'),'export const ready=true;');"+
+    `fs.writeFileSync(path.join(output,'manifest.json'),${JSON.stringify(JSON.stringify(manifest))});`);
+}
+module.exports = { accept, acceptUiProjects, isolatedSystemTools, assertUiPreviewCommands, addExtensionUiFixture };
 if (require.main === module)
   accept(...process.argv.slice(2)).catch((error) => {
     console.error(error);
