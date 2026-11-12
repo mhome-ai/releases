@@ -59,10 +59,10 @@ RUN curl -fsSL "https://github.com/jedisct1/minisign/releases/download/${MINISIG
     && rm -rf /tmp/minisign.tar.gz /tmp/minisign-linux
 
 # Node 22 security release; archive SHA-256 is pinned from its signed SHASUMS.
-ARG NODE_VERSION=22.23.4
+ARG NODE_VERSION=22.23.5
 RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-arm64.tar.xz" \
       -o /tmp/node.tar.xz \
-    && echo "6287aa46b6c375d816e63ae66d024fbbfd70404825aabdfdf898a970871d2f4b  /tmp/node.tar.xz" | sha256sum -c - \
+    && echo "2babb9eb5264860d540849f4b064a6fbdebcdc323657d9d382ce23d313fd5e09  /tmp/node.tar.xz" | sha256sum -c - \
     && mkdir -p /usr/local/lib/nodejs \
     && tar -xJf /tmp/node.tar.xz -C /usr/local/lib/nodejs \
     && ln -s "/usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-arm64/bin/node" /usr/local/bin/node \

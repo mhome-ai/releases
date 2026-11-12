@@ -7,10 +7,10 @@ RUN apt-get -o Acquire::Retries=3 update \
       libssl-dev patchelf squashfs-tools xdg-utils dbus-x11 xvfb xauth x11-utils \
     && rm -rf /var/lib/apt/lists/*
 # Node 22 security release; archive SHA-256 values are pinned from its signed SHASUMS.
-ARG NODE_VERSION=22.23.4
+ARG NODE_VERSION=22.23.5
 RUN set -eu; case "$(dpkg --print-architecture)" in \
-      arm64) arch=arm64; sha256=6287aa46b6c375d816e63ae66d024fbbfd70404825aabdfdf898a970871d2f4b;; \
-      amd64) arch=x64; sha256=1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce;; \
+      arm64) arch=arm64; sha256=2babb9eb5264860d540849f4b064a6fbdebcdc323657d9d382ce23d313fd5e09;; \
+      amd64) arch=x64; sha256=cdeb8670a0c81f51b4dc4ac61919f9b1ad917b304bf8221eb939570663d240f8;; \
       *) exit 1;; \
     esac; \
     curl -fsSL --retry 3 "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${arch}.tar.xz" -o /tmp/node.tar.xz; \

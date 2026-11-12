@@ -60,7 +60,7 @@ too old for the `-fps_mode` fixture contract. The image smoke test encodes H264,
 HEVC Main10 and Opus, probes Main10 and decodes it as the unprivileged runner.
 Product packaging still selects and verifies its own bundled media tools.
 
-The build CLI is Node 22.23.4, meeting the shared Script SDK/builder's Node 22
+The build CLI is Node 22.23.5, meeting the shared Script SDK/builder's Node 22
 minimum; this does not select the Node runtime inside product packages. The
 image smoke test executes JavaScript as well as checking the CLI loads. Archive
 SHA-256 values are pinned from Node's signed release checksums; update them with

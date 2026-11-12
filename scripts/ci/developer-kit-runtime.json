@@ -1,22 +1,22 @@
 {
-  "nodeVersion": "24.22.1",
+  "nodeVersion": "24.22.3",
   "npmVersion": "11.19.1",
   "publicKey": "RWSDtNyFFG//OFGxsBX3eAhepsHrCjaYEmFQeOySPMVOUz9NmpCvwQ6e",
   "platforms": {
     "darwin-arm64": {
-      "sha256": "89c682593d76cd44233fa53b1563264e7de9cbb189cad169135c5b4fadfbc0a7",
+      "sha256": "ff6e17d4874b76d272212b908cc020d6e815fba5a6c7eaaa06add725840307fd",
       "minimumOs": "macOS 13.5"
     },
     "darwin-x64": {
-      "sha256": "d132557e7ee2b85af08b0c8c34338e65c6430f2238d01f727728ef42dc83b035",
+      "sha256": "977614af0504c81045e7fd85596dbca0e5f951b96681516dadafedcca8c447f7",
       "minimumOs": "macOS 13.5"
     },
     "linux-arm64": {
-      "sha256": "33c37be234ba8bee041961047b19160f4d7d0f164e8e246f78bdd10feff148b3",
+      "sha256": "261af2af250dfd7e9f25cf151d1b2713a0adf8f10a9ad116c4947f68627affe8",
       "minimumOs": "Linux 4.18, glibc 2.28"
     },
     "linux-x64": {
-      "sha256": "eb6728e77c576a35162c122c45ccadf224d89ff00abc8dae46cc2897c6002d7c",
+      "sha256": "061ec3e3062115705b56b51fa9cc330ab50d34b6969387d4e4b1a50c6809acc2",
       "minimumOs": "Linux 4.18, glibc 2.28"
     }
   },
