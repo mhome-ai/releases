@@ -4,7 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const ROOT = path.join(__dirname, "../..");
-const PRIVATE_RELEASE_AUTH = "INTERNAL_RELEASES_READ_TOKEN: ${{ runner.os == 'macOS' && (inputs.channel == 'native' || inputs.channel == 'desktop') && (secrets.GPR_TOKEN_OVERRIDE || secrets.GPR_TOKEN) || '' }}";
+const PRIVATE_RELEASE_AUTH = "INTERNAL_RELEASES_READ_TOKEN: ${{ runner.os == 'macOS' && (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.GPR_TOKEN || '' }}";
 
 function read(relative) {
   return fs.readFileSync(path.join(ROOT, relative), "utf8");

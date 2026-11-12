@@ -60,9 +60,9 @@ Agent is also a source input. Provision `~/.mhome/agent` from the private `mhome
 ## Private FFmpeg build inputs
 
 Mac Host and desktop packaging consume the immutable FFmpeg binary/source pair
-from `mhome-ai/internal-releases`, with SHA-256 pins owned by Baycat. Reuse the
-Android download credential convention: `GPR_TOKEN_OVERRIDE`, then `GPR_TOKEN`.
-The selected credential needs **Contents: read** on `mhome-ai/internal-releases`.
+from `mhome-ai/internal-releases`, with SHA-256 pins owned by Baycat. Android and
+Mac downloads use the organization Secret `GPR_TOKEN`. It needs
+**Contents: read** on `mhome-ai/internal-releases`.
 Grant this public orchestrator access to the existing organization Secret through
 its repository access settings. No token value needs to be read or copied, and no
 FFmpeg-only token is needed. When changing a Secret from private repositories to
