@@ -370,6 +370,11 @@ test("Plugin SDK publication is independent from Kit signing and consumes frozen
   assert.doesNotMatch(build,/secrets\.|CARGO_REGISTRY_TOKEN/);
   assert.match(publish,/secrets\.CARGO_REGISTRY_TOKEN/);
   assert.match(workflow,/developer-sdk-job\.cjs.*build/);
+  assert.match(workflow,/id-token: write/);
+  assert.match(workflow,/vars\.RUNTIME_PUBLISH_ROLE_ARN/);
+  const archive=workflow.indexOf(' archive-plan '),upload=workflow.indexOf(' publish '),receipt=workflow.indexOf(' archive-publication ');
+  assert(archive>workflow.indexOf(' build ') && archive<upload);
+  assert(receipt>upload);
   assert.match(workflow,/if: always\(\)/);
   assert.doesNotMatch(read(".github/workflows/developer-kit.yaml"),/CARGO_REGISTRY_TOKEN/);
 });

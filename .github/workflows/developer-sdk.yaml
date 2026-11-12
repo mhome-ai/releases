@@ -12,6 +12,7 @@ on:
         required: true
 permissions:
   contents: read
+  id-token: write
 concurrency:
   group: developer-plugin-sdk
   cancel-in-progress: false
@@ -35,6 +36,14 @@ jobs:
           set -euo pipefail
           work="$HOME/.mhome/work/developer-sdk-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           node "$work/releases/scripts/ci/developer-sdk-job.cjs" build "$work/invocation.json"
+      - name: Archive frozen source plan before registry writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$HOME/.mhome/work/developer-sdk-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          source "$work/releases/scripts/ci/lib.sh"
+          assume_aws_role "${{ vars.RUNTIME_PUBLISH_ROLE_ARN }}"
+          node "$work/releases/scripts/ci/developer-sdk-job.cjs" archive-plan "$work/invocation.json"
       - name: Publish or verify exact registry packages in dependency order
         shell: bash
         env:
@@ -43,6 +52,14 @@ jobs:
           set -euo pipefail
           work="$HOME/.mhome/work/developer-sdk-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           node "$work/releases/scripts/ci/developer-sdk-job.cjs" publish "$work/invocation.json"
+      - name: Archive verified registry package digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$HOME/.mhome/work/developer-sdk-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          source "$work/releases/scripts/ci/lib.sh"
+          assume_aws_role "${{ vars.RUNTIME_PUBLISH_ROLE_ARN }}"
+          node "$work/releases/scripts/ci/developer-sdk-job.cjs" archive-publication "$work/invocation.json"
       - name: Clean owned publication files
         if: always()
         shell: bash

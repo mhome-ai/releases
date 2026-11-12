@@ -22,8 +22,11 @@ function inventory(directory, relative='') {
   });
 }
 function verifyPlan(plan,directory) {
-  if(plan.schemaVersion!==1 || plan.packages?.map(item=>item.name).join(',')!==names.join(','))throw new Error('Invalid SDK publication plan');
+  if(plan.schemaVersion!==2 || plan.packages?.map(item=>item.name).join(',')!==names.join(','))throw new Error('Invalid SDK publication plan');
   for(const item of plan.packages)if(!/^\d+\.\d+\.\d+$/.test(item.version))throw new Error('SDK versions must be exact');
+  if(plan.source?.repository!=='mhome-ai/integration' || plan.source.tag!==`sdk-plugin-v${plan.packages.at(-1).version}`
+      || !/^[a-f0-9]{40}$/.test(plan.source.commit || '') || plan.publisher?.repository!=='mhome-ai/releases'
+      || !/^[a-f0-9]{40}$/.test(plan.publisher.commit || ''))throw new Error('Invalid SDK source or publisher provenance');
   const lock=path.join(path.dirname(directory),'dependency.lock');
   if(!fs.lstatSync(lock).isFile() || hash(fs.readFileSync(lock))!==plan.dependencyLockSha256)throw new Error('Frozen SDK dependency lock changed');
   if(JSON.stringify(inventory(directory))!==JSON.stringify(plan.files))throw new Error('Frozen SDK source changed');
@@ -43,12 +46,15 @@ function prepareSdkDependencies(directory,{command=run}={}) {
 }
 function publishSdk(plan,directory,tool,{command=run}={}) {
   verifyPlan(plan,directory);
+  const planFile=path.join(path.dirname(directory),'sdk-plan.json'),planBytes=fs.readFileSync(planFile);
+  if(JSON.stringify(JSON.parse(planBytes))!==JSON.stringify(plan))throw new Error('Frozen SDK plan changed');
   if(hash(fs.readFileSync(tool))!==registryConfig().sha256)throw new Error('Registry verifier differs from the pinned source');
   // Cargo tests and package verification execute source/build scripts. The
   // workflow's upload credential belongs only to the final no-build upload.
   const buildEnv={...process.env};delete buildEnv.CARGO_REGISTRY_TOKEN;
   const prepare=(name,args,options={})=>command(name,args,{...options,env:buildEnv});
   const publication=path.join(path.dirname(directory),'publication');fs.mkdirSync(publication);
+  const verified=[];
   for(const item of plan.packages) {
     const project=path.join(publication,item.name);
     fs.cpSync(path.join(directory,item.name),project,{recursive:true});
@@ -72,7 +78,51 @@ function publishSdk(plan,directory,tool,{command=run}={}) {
       check('wait');
     }
     check('verify');
+    const bytes=fs.readFileSync(archive);
+    // Registry verification compares unpacked contents. Reused registry gzip
+    // bytes may differ, so identify this as the freshly prepared local archive.
+    verified.push({...item,preparedArchive:{sha256:hash(bytes),size:bytes.length}});
   }
+  verifyPlan(plan,directory);
+  if(!fs.readFileSync(planFile).equals(planBytes))throw new Error('Frozen SDK plan changed');
+  const receipt={schemaVersion:1,kind:'mhome.plugin-sdk-publication',source:plan.source,publisher:plan.publisher,
+    planSha256:hash(planBytes),packages:verified};
+  fs.writeFileSync(path.join(path.dirname(directory),'sdk-publication.json'),JSON.stringify(receipt,null,2)+'\n',{flag:'wx'});
+  return receipt;
+}
+// Persist provenance outside disposable worktrees and independently versioned
+// crates. Content-address the plan so retries and other publisher revisions can
+// coexist. A completion receipt is written only after every registry verification.
+function archiveSdkRecord(directory,name,{command=run}={}) {
+  if(!['sdk-plan.json','sdk-publication.json'].includes(name))throw new Error('Invalid SDK provenance record');
+  const artifacts=path.dirname(directory),planBytes=fs.readFileSync(path.join(artifacts,'sdk-plan.json'));
+  const plan=JSON.parse(planBytes);verifyPlan(plan,directory);
+  const source=path.join(artifacts,name),bytes=fs.readFileSync(source),planSha256=hash(planBytes);
+  if(name==='sdk-publication.json') {
+    const receipt=JSON.parse(bytes);
+    if(receipt.schemaVersion!==1 || receipt.kind!=='mhome.plugin-sdk-publication' || receipt.planSha256!==planSha256
+        || JSON.stringify(receipt.source)!==JSON.stringify(plan.source) || JSON.stringify(receipt.publisher)!==JSON.stringify(plan.publisher)
+        || JSON.stringify(receipt.packages?.map(({name,version})=>({name,version})))!==JSON.stringify(plan.packages)
+        || receipt.packages.some(item=>!/^[a-f0-9]{64}$/.test(item.preparedArchive?.sha256 || '')
+          || !Number.isSafeInteger(item.preparedArchive?.size) || item.preparedArchive.size<1))
+      throw new Error('SDK publication receipt differs from the frozen plan');
+  }
+  const key=`devkits/extension/sdk/${plan.source.tag}/${plan.source.commit}/${planSha256}/${name}`;
+  const env={...process.env};delete env.CARGO_REGISTRY_TOKEN;
+  const call=args=>command('aws',['s3api',...args,'--cli-connect-timeout','10','--cli-read-timeout','30'],{env,timeout:45000});
+  let putError;
+  try {call(['put-object','--bucket','mhome-install-distribution','--key',key,'--body',source,
+    '--content-type','application/json','--cache-control','public,max-age=31536000,immutable','--if-none-match','*']);}
+  catch(error){putError=error;}
+  // Read back both new and existing writes. A lost response is resolved only by
+  // reading identical bytes; never retry an uncertain write or assume absence.
+  const previous=path.join(artifacts,`.existing-${name}`);
+  try {
+    try {call(['get-object','--bucket','mhome-install-distribution','--key',key,previous]);}
+    catch(error){throw putError??error;}
+    if(!fs.readFileSync(previous).equals(bytes))throw new Error(`Immutable SDK provenance differs: ${name}`);
+  } finally {fs.rmSync(previous,{force:true});}
+  return {url:`https://install.mhome.ai/${key}`,sha256:hash(bytes)};
 }
 function workPath() {
   for(const value of [process.env.GITHUB_RUN_ID,process.env.GITHUB_RUN_ATTEMPT])if(!/^\d+$/.test(value||''))throw new Error('A GitHub invocation is required');
@@ -109,20 +159,23 @@ async function main() {
     run('npm',['ci','--prefix','tools/devkit','--ignore-scripts','--no-audit','--no-fund'],{cwd:source});
     fs.mkdirSync(artifacts);
     const {stageNativeSdk}=await import(pathToFileURL(path.join(source,'tools/devkit/stage-native.mjs')));
-    const packages=stageNativeSdk(sdk,{tag,commit}).map(({name,version})=>({name,version}));
+    const packages=stageNativeSdk(sdk).map(({name,version})=>({name,version}));
     if(tag!==`sdk-plugin-v${packages.at(-1).version}`)throw new Error('SDK tag does not match the public facade version');
     prepareSdkDependencies(sdk);
     run('node',['--test','tools/devkit/native-sdk.test.mjs'],{cwd:source});
     const lock=normalizeLock(fs.readFileSync(path.join(source,'Cargo.lock'),'utf8'));
     fs.writeFileSync(path.join(artifacts,'dependency.lock'),lock);
-    const plan={schemaVersion:1,source:{tag,commit},packages,dependencyLockSha256:hash(lock),files:inventory(sdk)};
+    const plan={schemaVersion:2,source:{repository:'mhome-ai/integration',tag,commit},
+      publisher:{repository:'mhome-ai/releases',commit:process.env.GITHUB_SHA},
+      packages,dependencyLockSha256:hash(lock),files:inventory(sdk)};
     verifyPlan(plan,sdk);fs.writeFileSync(path.join(artifacts,'sdk-plan.json'),JSON.stringify(plan,null,2)+'\n');
-  } else if(action==='publish') {
-    verifySourceTag(path.join(originals,'integration'),'integration',tag,commit);
+  } else if(['publish','archive-plan','archive-publication'].includes(action)) {
+    if(action==='publish')verifySourceTag(path.join(originals,'integration'),'integration',tag,commit);
     const plan=JSON.parse(fs.readFileSync(path.join(artifacts,'sdk-plan.json')));
-    if(plan.source.commit!==commit || plan.source.tag!==tag)throw new Error('SDK candidate source identity differs');
-    publishSdk(plan,sdk,path.join(tools,registry.path));
-  } else throw new Error('Expected setup, build, publish or clean');
+    if(plan.source.commit!==commit || plan.source.tag!==tag || plan.publisher?.commit!==process.env.GITHUB_SHA)throw new Error('SDK candidate source identity differs');
+    if(action==='publish')publishSdk(plan,sdk,path.join(tools,registry.path));
+    else console.log(JSON.stringify(archiveSdkRecord(sdk,action==='archive-plan'?'sdk-plan.json':'sdk-publication.json')));
+  } else throw new Error('Expected setup, build, archive-plan, publish, archive-publication or clean');
 }
-module.exports={inventory,verifyPlan,prepareSdkDependencies,publishSdk,names,normalizeLock};
+module.exports={inventory,verifyPlan,prepareSdkDependencies,publishSdk,archiveSdkRecord,names,normalizeLock};
 if(require.main===module)main().catch(error=>{console.error(error.message);process.exitCode=1;});

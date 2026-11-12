@@ -291,8 +291,25 @@ tests; uploading does not rerun author build scripts with that credential.
 
 Registry verification reuses Foundation's existing bounded verifier, frozen to the
 already published tag/commit/hash in `developer-sdk-registry.json`; it does not
-introduce a third fork of that tool. SDK Cargo metadata records the Integration
-source tag and full commit. Apache-2.0 LICENSE/NOTICE files ship with every crate.
+introduce a third fork of that tool. Whole-SDK source stamps are not written into
+the independently versioned crate manifests. Before registry writes, the workflow
+archives `sdk-plan.json`: Integration repository/tag/full commit, Releases publisher
+commit, exact crate versions, source file hashes and the frozen dependency-lock hash.
+After all registry checks succeed, `sdk-publication.json` records each prepared
+local archive's SHA-256/size and the plan hash. Registry equivalence checks unpacked
+contents; these local digests are not claimed to be registry gzip checksums.
+Failed partial publication has no completion
+receipt; its archived plan remains available. Changed package contents, including
+dependencies, packaged lockfiles and notices, still require a new unoccupied version.
+
+Both records survive owned-worktree cleanup in the existing distribution bucket at
+`devkits/extension/sdk/<source-tag>/<source-commit>/<plan-sha256>/`. The workflow prints
+their `https://install.mhome.ai/` URLs. Writes are conditional and read back byte for
+byte; exact retries reuse identical records and uncertain writes are resolved only
+by reads. This uses the existing `RUNTIME_PUBLISH_ROLE_ARN` through GitHub OIDC,
+with `devkits/*` Get/Put access; no new bucket, role variable or secret is introduced.
+Actual role trust/access and public delivery remain deployment verification items.
+Apache-2.0 LICENSE/NOTICE files ship with every crate.
 The publication step uses the existing standard `CARGO_REGISTRY_TOKEN` secret;
 Releases must have access to that credential before invocation. This source change
 does not configure secrets, create tags or upload crates. Source inspection cannot
