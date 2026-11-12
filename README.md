@@ -60,13 +60,27 @@ Agent is also a source input. Provision `~/.mhome/agent` from the private `mhome
 ## Private FFmpeg build inputs
 
 Mac Host and desktop packaging consume the immutable FFmpeg binary/source pair
-from `mhome-ai/internal-releases`, with SHA-256 pins owned by Baycat. Configure
-`INTERNAL_RELEASES_READ_TOKEN` in this repository as a fine-grained credential
-restricted to that private repository with **Contents: read**. The ordinary
-`GITHUB_TOKEN` only reads this orchestrator repository and cannot download those
-private inputs. This input credential does not replace the publication token and
-is injected only for Mac native/desktop jobs. Local builds can use ordinary `gh`
-authentication. Never put token values in source, logs or build artifacts.
+from `mhome-ai/internal-releases`, with SHA-256 pins owned by Baycat. Reuse the
+Android download credential convention: `GPR_TOKEN_OVERRIDE`, then `GPR_TOKEN`.
+The selected credential needs **Contents: read** on `mhome-ai/internal-releases`.
+Grant this public orchestrator access to the existing organization Secret through
+its repository access settings. No token value needs to be read or copied, and no
+FFmpeg-only token is needed. When changing a Secret from private repositories to
+selected repositories, retain the existing private consumers and add `releases`;
+do not silently replace their access or expose the credential to every public
+repository. New repositories then need explicit inclusion in the selected list.
+GitHub web settings can change the access policy without replacing the value;
+the documented create/update REST endpoint requires the encrypted value when
+changing visibility. An already-selected Secret supports adding repository IDs
+through the separate access API without retrieving its value.
+
+Only Mac native/desktop jobs map that Secret to the process variable
+`INTERNAL_RELEASES_READ_TOKEN`. This variable is an internal handoff, not another
+GitHub Secret to create. The downloader passes it as `GH_TOKEN` only to its private
+asset subprocess; product publication retains its repository-scoped
+`GITHUB_TOKEN`. Local builds can use ordinary `gh` authentication. Never put token
+values in source, logs or build artifacts. Verify the real private download after
+configuring the Secret; its name alone does not establish access or validity.
 
 The product package includes the matching complete source archive and upstream
 license notices; recipients do not need private GitHub access. Linux retains its

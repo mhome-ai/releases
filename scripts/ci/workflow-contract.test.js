@@ -4,6 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const ROOT = path.join(__dirname, "../..");
+const PRIVATE_RELEASE_AUTH = "INTERNAL_RELEASES_READ_TOKEN: ${{ runner.os == 'macOS' && (inputs.channel == 'native' || inputs.channel == 'desktop') && (secrets.GPR_TOKEN_OVERRIDE || secrets.GPR_TOKEN) || '' }}";
 
 function read(relative) {
   return fs.readFileSync(path.join(ROOT, relative), "utf8");
@@ -25,8 +26,9 @@ function productWorkflows() {
 test("only Mac product packaging receives the private FFmpeg input credential", () => {
   const workflow = read(".github/workflows/run-tagged.yaml");
   assert.match(workflow, /GH_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
-  assert.match(workflow, /INTERNAL_RELEASES_READ_TOKEN:.*runner\.os == 'macOS'.*inputs\.channel == 'native'.*inputs\.channel == 'desktop'.*secrets\.INTERNAL_RELEASES_READ_TOKEN/);
-  assert.match(read("README.md"), /restricted to that private repository with \*\*Contents: read\*\*/);
+  assert.ok(workflow.includes(PRIVATE_RELEASE_AUTH));
+  assert.doesNotMatch(workflow, /secrets\.INTERNAL_RELEASES_READ_TOKEN/);
+  assert.match(read("README.md"), /\*\*Contents: read\*\* on `mhome-ai\/internal-releases`/);
 });
 
 test("Matter builds receive no publisher key or GitHub write credential", () => {
@@ -47,7 +49,12 @@ test("workflows never clone and never use GitHub-hosted compile jobs", () => {
     assert.doesNotMatch(text, /actions\/checkout/, file);
     assert.doesNotMatch(text, /ubuntu-latest/, file);
     assert.doesNotMatch(text, /ubuntu-22\.04/, file);
-    assert.doesNotMatch(text, /GPR_TOKEN/, file);
+    // Git source access still uses runner SSH. Only this exact Mac asset
+    // download handoff can use the existing cross-repository read credential.
+    const sourceAuthText = file.endsWith("/run-tagged.yaml")
+      ? text.replace(PRIVATE_RELEASE_AUTH, "")
+      : text;
+    assert.doesNotMatch(sourceAuthText, /GPR_TOKEN/, file);
     assert.doesNotMatch(text, /actions\/upload-artifact/, file);
     assert.doesNotMatch(text, /actions\/download-artifact/, file);
     if (!file.endsWith("/run-developer-kit.yaml")) assert.doesNotMatch(text, /^\s+needs:/m, file);

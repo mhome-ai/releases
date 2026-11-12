@@ -61,7 +61,7 @@ jobs:
           WORK_SUFFIX: ${{ inputs.work_suffix }}
           INITIALIZE_CATALOG: ${{ inputs.initialize_catalog }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INTERNAL_RELEASES_READ_TOKEN: ${{ runner.os == 'macOS' && (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.INTERNAL_RELEASES_READ_TOKEN || '' }}
+          INTERNAL_RELEASES_READ_TOKEN: ${{ runner.os == 'macOS' && (inputs.channel == 'native' || inputs.channel == 'desktop') && (secrets.GPR_TOKEN_OVERRIDE || secrets.GPR_TOKEN) || '' }}
           DESKTOP_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'desktop' && vars.DESKTOP_PUBLISH_ROLE_ARN || '' }}
           RUNTIME_PUBLISH_ROLE_ARN: ${{ (inputs.channel == 'native' || inputs.channel == 'install') && vars.RUNTIME_PUBLISH_ROLE_ARN || '' }}
           NATIVE_INSTALL_PUBLISH_ROLE_ARN: ${{ (inputs.channel == 'install' || inputs.channel == 'compose') && vars.NATIVE_INSTALL_PUBLISH_ROLE_ARN || '' }}
