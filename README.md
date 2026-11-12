@@ -300,7 +300,8 @@ node --test scripts/ci/developer-kit.test.cjs scripts/ci/workflow-contract.test.
 
 ## Plugin SDK distribution
 
-`developer-sdk.yaml` publishes the ordinary Cargo SDK independently from Kit
+`developer-sdk.yaml` dispatches the internal `run-developer-sdk.yaml` executor
+from Releases `main` to publish the ordinary Cargo SDK independently from Kit
 distribution. Select Integration's exact `sdk-plugin-vX.Y.Z` tag and full commit;
 the tag version is the public `mhome-plugin-sdk` facade version. The source owner
 keeps its three crate versions independent. No SDK release is implied by a Kit
@@ -337,7 +338,8 @@ their `https://install.mhome.ai/` URLs. Writes are conditional and read back byt
 byte; exact retries reuse identical records and uncertain writes are resolved only
 by reads. This uses the existing `RUNTIME_PUBLISH_ROLE_ARN` through GitHub OIDC,
 with `devkits/*` Get/Put access; no new bucket, role variable or secret is introduced.
-Actual role trust/access and public delivery remain deployment verification items.
+Apply Baycat's `release/docker/aws-distribution.yml` update before running the
+workflow. The existing role must trust the SDK executor from Releases `main`.
 Apache-2.0 LICENSE/NOTICE files ship with every crate.
 The publication step uses the existing standard `CARGO_REGISTRY_TOKEN` secret;
 Releases must have access to that credential before invocation. This source change

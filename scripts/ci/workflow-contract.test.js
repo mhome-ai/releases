@@ -19,7 +19,7 @@ function workflowFiles() {
 
 function productWorkflows() {
   return workflowFiles().filter(
-    (file) => !/\/run-tagged(?:-plugin|-matter)?\.yaml$/.test(file) && !/\/developer-(kit|sdk)\.yaml$/.test(file) && !file.endsWith("/run-developer-kit.yaml")
+    (file) => !/\/run-tagged(?:-plugin|-matter)?\.yaml$/.test(file) && !/\/(?:run-)?developer-(?:kit|sdk)\.yaml$/.test(file)
   );
 }
 
@@ -379,8 +379,15 @@ test("Developer Kit promotes one index only after every platform exercises the p
 });
 
 test("Plugin SDK publication is independent from Kit signing and consumes frozen tested sources", () => {
-  const workflow=read(".github/workflows/developer-sdk.yaml");
-  const [build,publish]=workflow.split("      - name: Publish or verify exact registry packages");
+  const entry=read(".github/workflows/developer-sdk.yaml");
+  assert.match(entry,/workflow_dispatch:/);
+  assert.match(entry,/uses: \.\/\.github\/workflows\/run-developer-sdk\.yaml/);
+  assert.match(entry,/CARGO_REGISTRY_TOKEN: \$\{\{ secrets\.CARGO_REGISTRY_TOKEN \}\}/);
+  assert.doesNotMatch(entry,/secrets: inherit/);
+  const workflow=read(".github/workflows/run-developer-sdk.yaml");
+  assert.match(workflow,/workflow_call:/);
+  assert.match(workflow,/"\$GITHUB_REF" != refs\/heads\/main/);
+  const [build,publish]=workflow.split("    steps:")[1].split("      - name: Publish or verify exact registry packages");
   assert.doesNotMatch(build,/secrets\.|CARGO_REGISTRY_TOKEN/);
   assert.match(publish,/secrets\.CARGO_REGISTRY_TOKEN/);
   assert.match(workflow,/developer-sdk-job\.cjs.*build/);
@@ -395,7 +402,7 @@ test("Plugin SDK publication is independent from Kit signing and consumes frozen
 
 
 test("Developer publication inputs are read as event data without shell interpolation", () => {
-  for (const name of ["run-developer-kit.yaml", "developer-sdk.yaml"]) {
+  for (const name of ["run-developer-kit.yaml", "run-developer-sdk.yaml"]) {
     const workflow=read(`.github/workflows/${name}`);
     assert.doesNotMatch(workflow,/\$\{\{ toJSON\(inputs\) \}\}/);
     assert.match(workflow,/GITHUB_EVENT_PATH/);

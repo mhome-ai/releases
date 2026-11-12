@@ -18,49 +18,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
-    runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
-    timeout-minutes: 90
-    steps:
-      - name: Freeze publisher and invocation
-        shell: bash
-        run: |
-          set -euo pipefail
-          root="$HOME/.mhome"
-          git -C "$root/releases" fetch --no-tags origin "$GITHUB_SHA"
-          git -C "$root/releases" show "$GITHUB_SHA:scripts/ci/developer-sdk-job.cjs" > "$RUNNER_TEMP/developer-sdk-job.cjs"
-          work="$(node "$RUNNER_TEMP/developer-sdk-job.cjs" setup)"
-          node -e 'const fs = require("node:fs"); const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")); fs.writeFileSync(process.argv[1], JSON.stringify(event.inputs), {mode: 0o600});' "$work/invocation.json"
-      - name: Build and test fixed sources without publication credentials
-        shell: bash
-        run: |
-          set -euo pipefail
-          work="$HOME/.mhome/work/developer-sdk-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          node "$work/releases/scripts/ci/developer-sdk-job.cjs" build "$work/invocation.json"
-      - name: Archive frozen source plan before registry writes
-        shell: bash
-        run: |
-          set -euo pipefail
-          work="$HOME/.mhome/work/developer-sdk-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          source "$work/releases/scripts/ci/lib.sh"
-          assume_aws_role "${{ vars.RUNTIME_PUBLISH_ROLE_ARN }}"
-          node "$work/releases/scripts/ci/developer-sdk-job.cjs" archive-plan "$work/invocation.json"
-      - name: Publish or verify exact registry packages in dependency order
-        shell: bash
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          set -euo pipefail
-          work="$HOME/.mhome/work/developer-sdk-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          node "$work/releases/scripts/ci/developer-sdk-job.cjs" publish "$work/invocation.json"
-      - name: Archive verified registry package digests
-        shell: bash
-        run: |
-          set -euo pipefail
-          work="$HOME/.mhome/work/developer-sdk-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          source "$work/releases/scripts/ci/lib.sh"
-          assume_aws_role "${{ vars.RUNTIME_PUBLISH_ROLE_ARN }}"
-          node "$work/releases/scripts/ci/developer-sdk-job.cjs" archive-publication "$work/invocation.json"
-      - name: Clean owned publication files
-        if: always()
-        shell: bash
-        run: node "$RUNNER_TEMP/developer-sdk-job.cjs" clean
+    # The executor uses the original dispatch event to freeze the source.
+    uses: ./.github/workflows/run-developer-sdk.yaml
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
