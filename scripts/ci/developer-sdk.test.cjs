@@ -135,37 +135,18 @@ test('changed source, invalid order and altered registry verifier fail before pu
   assert.throws(()=>verifyPlan(f.plan,f.source),/source changed/);assert.equal(f.calls.length,0);
 });
 
-function objectStore({lost=false,denied=false,corrupt=false}={}) {
-  const objects=new Map(),calls=[];
-  const command=(name,args,options)=>{
-    assert.equal(name,'aws');assert.equal(Object.hasOwn(options.env,'CARGO_REGISTRY_TOKEN'),false);
-    assert(args.includes('--cli-connect-timeout')&&args.includes('--cli-read-timeout'));assert.equal(options.timeout,45000);
-    const key=args[args.indexOf('--key')+1];calls.push({action:args[1],key});
-    if(args[1]==='put-object') {
-      assert.equal(args[args.indexOf('--if-none-match')+1],'*');
-      if(denied)throw new Error('AccessDenied');
-      if(objects.has(key))throw new Error('PreconditionFailed');
-      objects.set(key,fs.readFileSync(args[args.indexOf('--body')+1]));
-      if(lost)throw new Error('upload response lost');
-    } else {
-      assert.equal(args[1],'get-object');
-      if(!objects.has(key))throw new Error('NoSuchKey');
-      const destination=args[args.indexOf('--key')+2];
-      fs.writeFileSync(destination,corrupt?'altered provenance':objects.get(key));
-    }
-    return '{}';
-  };
-  return {objects,calls,command};
-}
+const {githubReleases}=require('./developer-release-test-fixture.cjs');
 test('partial SDK publication preserves its archived plan without a false completion receipt',t=>{
-  const f=fixture(t),store=objectStore();
+  const f=fixture(t),store=githubReleases();
   archiveSdkRecord(f.source,'sdk-plan.json',{command:store.command});
   assert.throws(()=>publishSdk(f.plan,f.source,f.tool,{command:(name,args,options)=>{
     const result=f.command(name,args,options);
     if(name==='python3'&&args[2]==='verify'&&args[4]===names[1])throw new Error('runtime verification failed');
     return result;
   }}),/runtime verification failed/);
-  assert.equal(store.objects.size,1);
+  const draft=[...store.releases.values()][0];
+  assert.equal(draft.isDraft,true);
+  assert.deepEqual([...draft.files.keys()],['sdk-plan.json']);
   assert(!fs.existsSync(path.join(path.dirname(f.source),'sdk-publication.json')));
   assert(!f.calls.some(call=>call.cwd?.endsWith(names[2])));
 });
@@ -182,39 +163,58 @@ test('an altered SDK plan fails preflight or completion instead of changing its 
   assert(!fs.existsSync(path.join(path.dirname(f.source),'sdk-publication.json')));
 });
 test('SDK provenance survives cleanup in immutable content-addressed storage and exact retries',t=>{
-  const f=fixture(t),store=objectStore(),record=archiveSdkRecord(f.source,'sdk-plan.json',{command:store.command});
+  const f=fixture(t),store=githubReleases(),record=archiveSdkRecord(f.source,'sdk-plan.json',{command:store.command});
   assert.deepEqual(archiveSdkRecord(f.source,'sdk-plan.json',{command:store.command}),record);
-  assert.equal(store.objects.size,1);assert(record.url.startsWith('https://install.mhome.ai/devkits/extension/sdk/sdk-plugin-v0.1.0/'));
+  assert.equal(store.releases.size,1);
+  assert(record.url.startsWith('https://github.com/mhome-ai/releases/releases/tag/sdk-plugin-v0.1.0-plan-'));
+  const draft=[...store.releases.values()][0];
+  assert.equal(draft.isDraft,true);
+  assert.equal(store.calls.filter(call=>call.action==='upload').length,1);
   const bytes=fs.readFileSync(path.join(path.dirname(f.source),'sdk-plan.json'));
   assert.equal(record.sha256,createHash('sha256').update(bytes).digest('hex'));
   assert.equal(fs.existsSync(path.join(path.dirname(f.source),'.existing-sdk-plan.json')),false);
   fs.rmSync(path.dirname(f.source),{recursive:true,force:true});
-  assert.deepEqual([...store.objects.values()],[bytes]);
+  assert.deepEqual([...draft.files.values()],[bytes]);
 });
 test('SDK provenance resolves an uncertain write by identical readback without retrying the write',t=>{
-  const f=fixture(t),store=objectStore({lost:true});
+  const f=fixture(t),store=githubReleases({lost:true});
   assert.doesNotThrow(()=>archiveSdkRecord(f.source,'sdk-plan.json',{command:store.command}));
-  assert.deepEqual(store.calls.map(call=>call.action),['put-object','get-object']);
+  assert.equal(store.calls.filter(call=>call.action==='upload').length,1);
 });
-for(const [options,error] of [[{denied:true},/AccessDenied/],[{corrupt:true},/Immutable SDK provenance differs/]])
+for(const [options,error] of [[{denied:true},/Permission denied/],[{corrupt:true},/Immutable GitHub release asset differs/]])
   test('unreadable or different SDK provenance fails instead of assuming successful archival',t=>{
-    const f=fixture(t),store=objectStore(options);
+    const f=fixture(t),store=githubReleases(options);
     assert.throws(()=>archiveSdkRecord(f.source,'sdk-plan.json',{command:store.command}),error);
-    assert.equal(fs.existsSync(path.join(path.dirname(f.source),'.existing-sdk-plan.json')),false);
+    assert(!store.calls.some(call=>call.action==='edit'));
+    if(options.denied) assert(!store.calls.some(call=>call.action==='create'));
   });
 test('only a matching fully verified SDK receipt is archived, and other publisher plans coexist',t=>{
-  const f=fixture(t),store=objectStore();
+  const f=fixture(t),store=githubReleases();
   const first=archiveSdkRecord(f.source,'sdk-plan.json',{command:store.command});
   publishSdk(f.plan,f.source,f.tool,{command:f.command});
   const published=archiveSdkRecord(f.source,'sdk-publication.json',{command:store.command});
-  assert(published.url.endsWith('/sdk-publication.json'));assert.equal(store.objects.size,2);
+  assert(published.url.endsWith('/sdk-publication.json'));
+  const released=[...store.releases.values()][0];
+  assert.equal(released.isDraft,false);
+  assert.deepEqual([...released.files.keys()],['sdk-plan.json','sdk-publication.json']);
+  assert.deepEqual(archiveSdkRecord(f.source,'sdk-publication.json',{command:store.command}),published);
+  assert.equal(store.calls.filter(call=>call.action==='edit').length,1);
   const file=path.join(path.dirname(f.source),'sdk-publication.json'),receipt=JSON.parse(fs.readFileSync(file));
   receipt.planSha256='0'.repeat(64);fs.writeFileSync(file,JSON.stringify(receipt));
   assert.throws(()=>archiveSdkRecord(f.source,'sdk-publication.json',{command:store.command}),/differs from the frozen plan/);
   f.plan.publisher.commit='c'.repeat(40);
   fs.writeFileSync(path.join(path.dirname(f.source),'sdk-plan.json'),JSON.stringify(f.plan,null,2)+'\n');
   const next=archiveSdkRecord(f.source,'sdk-plan.json',{command:store.command});
-  assert.notEqual(next.url,first.url);assert.equal(store.objects.size,3);
+  assert.notEqual(next.url,first.url);
+  assert.deepEqual([...store.releases.values()].map(release=>release.isDraft),[false,true]);
+});
+test('a conflicting remote provenance tag stops before creating a draft or uploading',t=>{
+  const f=fixture(t),store=githubReleases();
+  const bytes=fs.readFileSync(path.join(path.dirname(f.source),'sdk-plan.json'));
+  const tag=`${f.plan.source.tag}-plan-${createHash('sha256').update(bytes).digest('hex')}`;
+  store.tags.set(tag,'d'.repeat(40));
+  assert.throws(()=>archiveSdkRecord(f.source,'sdk-plan.json',{command:store.command}),/points to a different commit/);
+  assert.deepEqual(store.calls.map(call=>call.action),['view']);
 });
 test('SDK bootstrap is standalone before the frozen publisher exists',t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'developer-sdk-bootstrap-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));

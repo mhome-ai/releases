@@ -73,9 +73,9 @@ test("an incompatible CLI is rejected before Node downloads or candidate publica
   }));
   let downloads = 0;
   await assert.rejects(prepare(root, {
-    cliVersion: "1.9.4", orchestratorCommit: "b".repeat(40),
+    cliVersion: "1.18.1", orchestratorCommit: "b".repeat(40),
     downloadFile: async () => { downloads++; throw new Error("unexpected download"); },
-  }), /requires meow 1\.15\.0 or later; requested 1\.9\.4/);
+  }), /requires meow 1\.19\.0 or later; requested 1\.18\.1/);
   assert.equal(downloads, 0);
 });
 
@@ -155,25 +155,43 @@ test("index promotion preserves exact releases and cannot roll latest backwards"
   );
 });
 
-test("publish verifies public bytes before CAS index promotion and refuses occupied version changes", async (t) => {
+test("publish stores only metadata on S3 and verifies GitHub bytes before CAS index promotion", async (t) => {
+  const { githubReleases } = require("./developer-release-test-fixture.cjs");
+  const { assetUrl } = require("./github-developer-release.cjs");
+  const github = githubReleases();
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "card-devkit-release-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const bytes = Buffer.from("standalone kit");
+  const node = Buffer.from("managed Node");
+  const tag = "kit-ui-v1.6.0";
   fs.writeFileSync(path.join(root, "kit.tar.gz"), bytes);
+  fs.writeFileSync(path.join(root, "node-darwin-arm64.tar.gz"), node);
+  fs.writeFileSync(path.join(root, "acceptance.json"), "{}");
+  const kitFile = { path: "kit.tar.gz", size: bytes.length, sha256: hash(bytes) };
+  const nodeFile = { path: "node-darwin-arm64.tar.gz", size: node.length, sha256: hash(node) };
+  const asset = ({ path, ...metadata }) => ({ ...metadata, url: assetUrl(tag, path) });
   const manifest = {
     schemaVersion: 1,
     kind: "meow.developer-kit",
     kit:"ui",
     version: "1.6.0",
-    files: [{ path: "kit.tar.gz", size: bytes.length, sha256: hash(bytes) }],
+    source: { tag, commit: "a".repeat(40) },
+    orchestratorCommit: "b".repeat(40),
+    platforms: { "darwin-arm64": { payload: asset(kitFile), asset: asset(nodeFile) } },
+    files: [kitFile, nodeFile, { path: "acceptance.json", size: 2, sha256: hash(Buffer.from("{}")) }],
   };
   fs.writeFileSync(path.join(root, "kit.json"), JSON.stringify(manifest));
-  const objects = new Map(),
+  const previous = {
+    schemaVersion: 1, kind: "meow.developer-kit.index", kit: "ui",
+    versions: [{ version: "1.5.0", manifestSha256: "c".repeat(64) }],
+    latest: "1.5.0",
+  };
+  const objects = new Map([["devkits/ui/index.json", Buffer.from(JSON.stringify(previous))]]),
     writes = [],
     reads = [];
   let corruptPublic = false;
-  const command = (command, args) => {
-    assert.equal(command, "aws");
+  const command = (command, args, options) => {
+    if (command !== "aws") return github.command(command, args, options);
     if (args[1] === "list-objects-v2") {
       const prefix=args[args.indexOf("--prefix")+1];
       const keys=[...objects.keys()].filter(key=>key.startsWith(prefix)).sort().slice(0,1);
@@ -194,11 +212,16 @@ test("publish verifies public bytes before CAS index promotion and refuses occup
       );
     if (key.endsWith("index.json"))
       assert(reads.includes("devkits/ui/1.6.0/kit.json"));
+    assert(!key.endsWith(".tar.gz"), "S3 never receives the Kit or Node archive");
+    assert.equal(github.releases.get(tag).isDraft, false);
     objects.set(key, fs.readFileSync(args[args.indexOf("--body") + 1]));
     writes.push(key);
     return "{}";
   };
   const fetcher = async (url) => {
+    if (new URL(url).hostname === "github.com") {
+      return new Response(corruptPublic ? "corrupt GitHub asset" : github.publicBytes(url));
+    }
     const key = new URL(url).pathname.slice(1);
     reads.push(key);
     return new Response(corruptPublic ? "corrupt CDN" : objects.get(key));
@@ -209,6 +232,7 @@ test("publish verifies public bytes before CAS index promotion and refuses occup
     verifyEnvelope: (bytes) => JSON.parse(bytes),
     signer: async (value) => Buffer.from(JSON.stringify(value)),
   });
+  assert.equal(writes.includes("devkits/ui/index.json"), false);
   await publish(root, {
     command,
     fetcher,
@@ -217,6 +241,7 @@ test("publish verifies public bytes before CAS index promotion and refuses occup
     promote: true,
   });
   assert.equal(writes.at(-1), "devkits/ui/index.json");
+  assert.deepEqual(JSON.parse(objects.get("devkits/ui/index.json")).versions.map(item => item.version), ["1.5.0", "1.6.0"]);
   await publish(root, {
     command,
     fetcher,
@@ -231,7 +256,11 @@ test("publish verifies public bytes before CAS index promotion and refuses occup
     promote: true,
   }); // Exact retry accepts existing immutable bytes.
   const before = writes.length;
+  assert.equal(github.calls.filter(call => call.action === "upload").length, 2);
   corruptPublic = true;
+  await assert.rejects(publish(root, {
+    command, fetcher, verifyEnvelope: (bytes) => JSON.parse(bytes), promote: true,
+  }), /Public delivery/);
   await assert.rejects(
     publish(root, {
       command,
@@ -242,18 +271,21 @@ test("publish verifies public bytes before CAS index promotion and refuses occup
   );
   assert.equal(writes.length, before);
   corruptPublic = false;
-  objects.set(
-    "devkits/ui/1.6.0/kit.tar.gz",
-    Buffer.from("different release")
-  );
+  github.releases.get(tag).files.set("kit.tar.gz", Buffer.from("different release"));
   await assert.rejects(
     publish(root, {
       command,
       fetcher,
       verifyEnvelope: (bytes) => JSON.parse(bytes),
     }),
-    /Immutable DevKit/
+    /Immutable GitHub release asset differs/
   );
+  assert.equal(writes.length, before);
+  github.releases.get(tag).files.set("kit.tar.gz", bytes);
+  objects.set("devkits/ui/1.6.0/kit.json", Buffer.from("original version metadata differs"));
+  await assert.rejects(publish(root, {
+    command, fetcher, verifyEnvelope: (bytes) => JSON.parse(bytes),
+  }), /Immutable DevKit file differs/);
   assert.equal(writes.length, before);
 });
 
@@ -480,7 +512,12 @@ test("preparation freezes signed CLI assets for all four advertised Mac/Linux pl
     signer: async (value) => Buffer.from(JSON.stringify(value)),
   });
   assert.equal(manifest.version, "2.0.0");
+  assert.equal(manifest.minimumCliVersion, "2.0.0");
   assert.deepEqual(Object.keys(manifest.platforms), ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64']);
+  assert.equal(manifest.platforms["darwin-arm64"].payload.url,
+    "https://github.com/mhome-ai/releases/releases/download/kit-ui-v2.0.0/kit.tar.gz");
+  assert.equal(manifest.platforms["linux-x64"].asset.url,
+    "https://github.com/mhome-ai/releases/releases/download/kit-ui-v2.0.0/node-linux-x64.tar.gz");
   assert.equal(commands.filter((name) => name === "gpgv").length, 1);
   const frozen = JSON.parse(
     fs.readFileSync(path.join(root, "acceptance.json"))

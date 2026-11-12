@@ -376,6 +376,8 @@ test("Developer Kit promotes one index only after every platform exercises the p
   assert.deepEqual(platforms, ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64']);
   assert.deepEqual([...workflow.matchAll(/- platform: (\S+)/g)].map(match => match[1]), platforms);
   assert.match(workflow, /developer-kit-job\.cjs/);
+  assert.match(entry, /contents: write/);
+  assert.match(workflow, /GH_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
   assert.match(entry, /options: \[ui, extension, wave\]/);
   assert.doesNotMatch(workflow, /CARD_DEVKIT_SOURCE_READ_TOKEN/);
   const source = read("scripts/ci/developer-kit.cjs");
@@ -387,20 +389,18 @@ test("Developer Kit promotes one index only after every platform exercises the p
 });
 
 test("Plugin SDK publication is independent from Kit signing and consumes frozen tested sources", () => {
-  const entry=read(".github/workflows/developer-sdk.yaml");
-  assert.match(entry,/workflow_dispatch:/);
-  assert.match(entry,/uses: \.\/\.github\/workflows\/run-developer-sdk\.yaml/);
-  assert.match(entry,/CARGO_REGISTRY_TOKEN: \$\{\{ secrets\.CARGO_REGISTRY_TOKEN \}\}/);
-  assert.doesNotMatch(entry,/secrets: inherit/);
-  const workflow=read(".github/workflows/run-developer-sdk.yaml");
-  assert.match(workflow,/workflow_call:/);
+  const workflow=read(".github/workflows/developer-sdk.yaml");
+  assert.match(workflow,/workflow_dispatch:/);
+  assert.match(workflow,/contents: write/);
   assert.match(workflow,/"\$GITHUB_REF" != refs\/heads\/main/);
-  const [build,publish]=workflow.split("    steps:")[1].split("      - name: Publish or verify exact registry packages");
-  assert.doesNotMatch(build,/secrets\.|CARGO_REGISTRY_TOKEN/);
-  assert.match(publish,/secrets\.CARGO_REGISTRY_TOKEN/);
+  const step = name => workflow.split(`      - name: ${name}`)[1].split("      - name:")[0];
+  assert.doesNotMatch(step("Build and test fixed sources"),/secrets\.|CARGO_REGISTRY_TOKEN|GH_TOKEN/);
+  assert.match(step("Publish or verify exact registry packages"),/secrets\.CARGO_REGISTRY_TOKEN/);
+  assert.doesNotMatch(step("Publish or verify exact registry packages"),/GH_TOKEN/);
+  assert.match(step("Archive frozen source plan"),/GH_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
+  assert.match(step("Publish the verified registry receipt"),/GH_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
   assert.match(workflow,/developer-sdk-job\.cjs.*build/);
-  assert.match(workflow,/id-token: write/);
-  assert.match(workflow,/vars\.RUNTIME_PUBLISH_ROLE_ARN/);
+  assert.doesNotMatch(workflow,/id-token:|RUNTIME_PUBLISH_ROLE_ARN|assume_aws_role/);
   const archive=workflow.indexOf(' archive-plan '),upload=workflow.indexOf(' publish '),receipt=workflow.indexOf(' archive-publication ');
   assert(archive>workflow.indexOf(' build ') && archive<upload);
   assert(receipt>upload);
@@ -410,7 +410,7 @@ test("Plugin SDK publication is independent from Kit signing and consumes frozen
 
 
 test("Developer publication inputs are read as event data without shell interpolation", () => {
-  for (const name of ["run-developer-kit.yaml", "run-developer-sdk.yaml"]) {
+  for (const name of ["run-developer-kit.yaml", "developer-sdk.yaml"]) {
     const workflow=read(`.github/workflows/${name}`);
     assert.doesNotMatch(workflow,/\$\{\{ toJSON\(inputs\) \}\}/);
     assert.match(workflow,/GITHUB_EVENT_PATH/);

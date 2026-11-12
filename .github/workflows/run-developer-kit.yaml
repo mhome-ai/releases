@@ -16,9 +16,11 @@ on:
         required: true
 permissions:
   contents: read
-  id-token: write
 jobs:
   prepare:
+    permissions:
+      contents: write
+      id-token: write
     runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
     timeout-minutes: 90
     steps:
@@ -37,9 +39,10 @@ jobs:
           set -euo pipefail
           work="$HOME/.mhome/work/developer-kit-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-prepare-none"
           node "$work/releases/scripts/ci/developer-kit-job.cjs" pack prepare none "$work/invocation.json"
-      - name: Sign and upload immutable candidate
+      - name: Publish immutable GitHub assets and sign the candidate manifest
         shell: bash
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUNTIME_CATALOG_PRIVATE_KEY_B64: ${{ secrets.RUNTIME_CATALOG_PRIVATE_KEY_B64 }}
         run: |
           set -euo pipefail
@@ -47,12 +50,15 @@ jobs:
           source "$work/releases/scripts/ci/lib.sh"
           assume_aws_role "${{ vars.RUNTIME_PUBLISH_ROLE_ARN }}"
           node "$work/releases/scripts/ci/developer-kit-job.cjs" prepare prepare none "$work/invocation.json"
+          unset RUNTIME_CATALOG_PRIVATE_KEY_B64
           node "$work/releases/scripts/ci/developer-kit-job.cjs" upload prepare none "$work/invocation.json"
       - name: Clean owned publication files
         if: always()
         shell: bash
         run: node "$RUNNER_TEMP/developer-kit-job.cjs" clean prepare none
   accept:
+    permissions:
+      contents: read
     needs: prepare
     strategy:
       fail-fast: false
@@ -90,6 +96,9 @@ jobs:
         run: node "$RUNNER_TEMP/developer-kit-job.cjs" clean accept ${{ matrix.platform }}
   promote:
     needs: [prepare, accept]
+    permissions:
+      contents: read
+      id-token: write
     runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
     timeout-minutes: 30
     steps:

@@ -19,7 +19,7 @@ on:
         type: string
         required: true
 permissions:
-  contents: read
+  contents: write
   id-token: write
 concurrency:
   group: developer-kit-${{ inputs.kit }}

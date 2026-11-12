@@ -4,7 +4,11 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { execFileSync } = require("node:child_process");
 const config = require("./developer-kit-runtime.json");
+const { assetUrl, releaseAssets } = require("./github-developer-release.cjs");
 const BASE = "https://install.mhome.ai/devkits";
+const METADATA = new Set(["kit.json", "acceptance.json", "node-SHASUMS256.txt", "node-SHASUMS256.txt.sig",
+  "contracts.fixture.json", "bindings.fixture.json"]);
+const GITHUB_ASSET_MIN_CLI = "1.19.0";
 const sha = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
 const run = (command, args, options = {}) =>
   execFileSync(command, args, {
@@ -196,9 +200,11 @@ async function prepare(
   exact(built.version);
   exact(cliVersion);
   exact(built.minimumCliVersion);
-  if (compareVersions(cliVersion, built.minimumCliVersion) < 0)
+  const minimumCliVersion = compareVersions(built.minimumCliVersion, GITHUB_ASSET_MIN_CLI) > 0
+    ? built.minimumCliVersion : GITHUB_ASSET_MIN_CLI;
+  if (compareVersions(cliVersion, minimumCliVersion) < 0)
     throw new Error(
-      `Kit requires meow ${built.minimumCliVersion} or later; requested ${cliVersion}`
+      `Kit requires meow ${minimumCliVersion} or later; requested ${cliVersion}`
     );
   if (!built.source || !/^[a-f0-9]{40}$/.test(orchestratorCommit || ""))
     throw new Error("Missing frozen source provenance");
@@ -249,10 +255,10 @@ async function prepare(
         const filename = built.payloads?.[platform] || "kit.tar.gz";
         const file = built.files.find(item => item.path === filename);
         if (!file) throw new Error(`Missing Kit payload: ${platform}`);
-        return {url:`${BASE}/${built.kit}/${built.version}/${filename}`,size:file.size,sha256:file.sha256};
+        return {url:assetUrl(built.source.tag, filename),size:file.size,sha256:file.sha256};
       })(),
       asset: {
-        url: `${BASE}/${built.kit}/${built.version}/${output}`,
+        url: assetUrl(built.source.tag, output),
         size: asset.size,
         sha256: asset.sha256,
       },
@@ -294,7 +300,7 @@ async function prepare(
     kit: built.kit,
     version: built.version,
     workerProtocol: built.workerProtocol,
-    minimumCliVersion: built.minimumCliVersion,
+    minimumCliVersion,
     source: built.source,
     orchestratorCommit: orchestratorCommit,
     platforms,
@@ -351,6 +357,10 @@ async function publish(
   )
     throw new Error("Invalid DevKit manifest");
   const prefix = `devkits/${manifest.kit}/${manifest.version}/`;
+  const tag = `kit-${manifest.kit}-v${manifest.version}`;
+  if (manifest.source?.tag !== tag || !/^[a-f0-9]{40}$/.test(manifest.source.commit)
+      || !/^[a-f0-9]{40}$/.test(manifest.orchestratorCommit))
+    throw new Error("Invalid DevKit release source");
   const files = [
     ...manifest.files,
     {
@@ -361,14 +371,48 @@ async function publish(
   ];
   if (new Set(files.map((file) => file.path)).size !== files.length)
     throw new Error("Duplicate release file path");
+  const archives = new Map();
+  const byName = new Map(files.map(file => [file.path, file]));
+  for (const {asset, payload} of Object.values(manifest.platforms ?? {})) {
+    for (const part of [asset, payload]) {
+      const name = new URL(part.url).pathname.split("/").at(-1);
+      const file = byName.get(name);
+      if (!name.endsWith(".tar.gz") || part.url !== assetUrl(tag, name)
+          || file?.sha256 !== part.sha256 || file?.size !== part.size)
+        throw new Error("DevKit archive must match the signed GitHub Release inventory");
+      archives.set(name, part.url);
+    }
+  }
+  if (!archives.size || files.some(file => !archives.has(file.path) && !METADATA.has(file.path)))
+    throw new Error("Invalid DevKit archive inventory");
   for (const file of files) {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9.-]+$/.test(file.path))
       throw new Error("Invalid release file path");
-    const source = path.join(directory, file.path);
     if (!promote) {
-      const bytes = await fs.readFile(source);
+      const bytes = await fs.readFile(path.join(directory, file.path));
       if (bytes.length !== file.size || sha(bytes) !== file.sha256)
         throw new Error(`Artifact changed: ${file.path}`);
+    }
+  }
+  if (!promote) {
+    releaseAssets({
+      tag, commit: manifest.orchestratorCommit, title: `MeowLink ${manifest.kit} Kit ${manifest.version}`,
+      notes: `Source: ${manifest.source.tag} at ${manifest.source.commit}. The signed Kit index controls installer discovery.`,
+      files: files.filter(file => archives.has(file.path)).map(file => ({...file,path:path.join(directory,file.path)})),
+      publish: true,
+    }, command);
+  }
+  async function verifyDelivery(file, url) {
+    const response = await fetcher(url, { signal: AbortSignal.timeout(300000), cache: "no-store" });
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!response.ok || bytes.length !== file.size || sha(bytes) !== file.sha256)
+      throw new Error(`Public delivery verification failed: ${file.path}`);
+  }
+  // Verify large assets before exposing their signed manifest.
+  for (const [name, url] of archives) await verifyDelivery(byName.get(name), url);
+  for (const file of files.filter(file => !archives.has(file.path))) {
+    const source = path.join(directory, file.path);
+    if (!promote) {
       try {
         command("aws", [
           "s3api",
@@ -382,8 +426,6 @@ async function publish(
           "--content-type",
           file.path.endsWith(".json")
             ? "application/json"
-            : file.path.endsWith(".gz")
-            ? "application/gzip"
             : file.path.endsWith(".sig")
             ? "application/octet-stream"
             : "text/plain; charset=utf-8",
@@ -412,17 +454,7 @@ async function publish(
         await fs.unlink(previous);
       }
     }
-    const response = await fetcher(`${BASE}/${manifest.kit}/${manifest.version}/${file.path}`, {
-      signal: AbortSignal.timeout(300000),
-      cache: "no-store",
-    });
-    const publicBytes = Buffer.from(await response.arrayBuffer());
-    if (
-      !response.ok ||
-      publicBytes.length !== file.size ||
-      sha(publicBytes) !== file.sha256
-    )
-      throw new Error(`Public delivery verification failed: ${file.path}`);
+    await verifyDelivery(file, `${BASE}/${manifest.kit}/${manifest.version}/${file.path}`);
   }
   if (!promote) return { uploaded: manifest.version };
   const indexFile = path.join(directory, ".index.json");

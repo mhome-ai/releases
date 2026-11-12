@@ -107,22 +107,17 @@ function archiveSdkRecord(directory,name,{command=run}={}) {
           || !Number.isSafeInteger(item.preparedArchive?.size) || item.preparedArchive.size<1))
       throw new Error('SDK publication receipt differs from the frozen plan');
   }
-  const key=`devkits/extension/sdk/${plan.source.tag}/${plan.source.commit}/${planSha256}/${name}`;
-  const env={...process.env};delete env.CARGO_REGISTRY_TOKEN;
-  const call=args=>command('aws',['s3api',...args,'--cli-connect-timeout','10','--cli-read-timeout','30'],{env,timeout:45000});
-  let putError;
-  try {call(['put-object','--bucket','mhome-install-distribution','--key',key,'--body',source,
-    '--content-type','application/json','--cache-control','public,max-age=31536000,immutable','--if-none-match','*']);}
-  catch(error){putError=error;}
-  // Read back both new and existing writes. A lost response is resolved only by
-  // reading identical bytes; never retry an uncertain write or assume absence.
-  const previous=path.join(artifacts,`.existing-${name}`);
-  try {
-    try {call(['get-object','--bucket','mhome-install-distribution','--key',key,previous]);}
-    catch(error){throw putError??error;}
-    if(!fs.readFileSync(previous).equals(bytes))throw new Error(`Immutable SDK provenance differs: ${name}`);
-  } finally {fs.rmSync(previous,{force:true});}
-  return {url:`https://install.mhome.ai/${key}`,sha256:hash(bytes)};
+  const {assetUrl,releaseAssets}=require('./github-developer-release.cjs');
+  const tag=`${plan.source.tag}-plan-${planSha256}`;
+  const publish=name==='sdk-publication.json';
+  const files=[{path:path.join(artifacts,'sdk-plan.json'),size:planBytes.length,sha256:planSha256}];
+  if(publish) files.push({path:source,size:bytes.length,sha256:hash(bytes)});
+  const release=releaseAssets({
+    tag,commit:plan.publisher.commit,title:`MeowLink Plugin SDK ${plan.packages.at(-1).version} provenance`,
+    notes:`Source: ${plan.source.tag} at ${plan.source.commit}. Install the crates from crates.io. This Release records publication provenance.`,
+    files,publish,
+  },command);
+  return {url:release.isDraft?release.url:assetUrl(tag,name),sha256:hash(bytes)};
 }
 function workPath() {
   for(const value of [process.env.GITHUB_RUN_ID,process.env.GITHUB_RUN_ATTEMPT])if(!/^\d+$/.test(value||''))throw new Error('A GitHub invocation is required');

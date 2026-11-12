@@ -228,7 +228,9 @@ node --test scripts/ci/desktop-release.test.js scripts/ci/publish-desktop-update
 Releases freezes, signs, verifies and distributes it. A release selects an exact
 `kit-<ui|extension|wave>-vX.Y.Z` source tag/full commit and an already published
 meow CLI version on all four supported Mac/Linux platforms (ARM64 and x64).
-Extension Kit 0.9.0 declares meow 1.18.0 as its minimum and requires the captured
+GitHub-hosted Kit archives require meow 1.19.0 or later to follow the official
+GitHub attachment redirect. Publication uses the higher of this download floor
+and the source Kit's declared minimum. Extension also requires its captured
 Plugin SDK version to be published first. Native acceptance initializes both
 Rust-only and Rust/YAML projects, rejects local SDK patches, and runs their Cargo
 tests against actual registry crates on the selected target. These checks use
@@ -238,13 +240,15 @@ Node/npm. Source-only staged SDK tests are not registry acceptance.
 Windows is not advertised or included in this first release. No Kit release
 deploys the App website or distributes the Wave firmware SDK.
 
-The root is `https://install.mhome.ai/devkits/<kit>/`, in the existing
-`mhome-install-distribution` bucket. Each immutable version contains signed
-`kit.json`, exact preinstalled worker payloads and four normalized Node/npm
-archives. UI/Wave share portable payloads; Extension carries each platform's locked
-native esbuild dependency. The manifest binds Kit identity, source/publisher
-commits, worker protocol, minimum CLI/OS, and URL/size/SHA-256 of every asset.
-`acceptance.json` freezes signed, released native CLI artifacts for verification.
+The signed index, signed version `kit.json` and small verification records
+remain at `https://install.mhome.ai/devkits/<kit>/`. New versions publish their
+worker and normalized Node/npm archives as assets on the exact
+`kit-<kit>-vX.Y.Z` GitHub Release in this repository. UI/Wave share portable
+payloads; Extension carries each platform's locked native esbuild dependency.
+The signed manifest binds source/publisher commits, minimum CLI/OS, and each
+archive's HTTPS URL, size and SHA-256. `acceptance.json` freezes the released
+native CLI artifacts for verification. Older versions keep their original
+signed URLs and bytes; this does not migrate or delete existing S3 archives.
 
 `developer-kit-runtime.json` pins official Node/npm versions and upstream hashes.
 The publisher verifies Node's signed SHASUMS with the fixed official public key
@@ -253,8 +257,11 @@ third-party license are recorded alongside it. Package installation uses committ
 links disabled. Every archive rejects links/special files and preserves required
 executable bits. Consumers do not npm-install the Kit itself or need system Node.
 
-The workflow first builds frozen source without publisher credentials, signs and
-uploads immutable candidate files, and leaves the index unchanged. Each supported
+The workflow builds frozen source without publisher credentials, uploads the
+archives to a draft GitHub Release, and publishes it without marking it Latest.
+Existing assets must match their exact size and digest; no upload overwrites
+an asset. The publisher verifies the public GitHub downloads before writing the
+candidate metadata to S3. The signed index remains unchanged. Each supported
 platform then runs the real public installer with an empty system PATH. UI checks
 both bases, type checking, build/verify, tamper rejection and explicit rebuilding.
 Desktop Preview separately requires a signed-in installed App and active Space;
@@ -275,8 +282,8 @@ The existing Runtime Minisign trust key remains authoritative. No unsigned
 installer flag or environment-based public-key override is added. Workflow inputs,
 work paths, source identities and selected CLI travel through explicit
 arguments/private invocation JSON. Fixed verification keys are derived from source.
-The only step-specific secret environment is
-`RUNTIME_CATALOG_PRIVATE_KEY_B64`; standard GitHub/AWS tool credentials remain.
+Candidate publication uses the workflow's GitHub token and the existing
+`RUNTIME_CATALOG_PRIVATE_KEY_B64`; AWS access is for the metadata.
 
 Runner/release prerequisites:
 
@@ -287,16 +294,17 @@ Runner/release prerequisites:
 - Existing macOS ARM64 + Rosetta and Linux ARM64/x64 self-hosted
   runners, with Node for the recipe, Minisign and tar. Product subprocesses use
   only the downloaded managed tools.
-- Publisher Node/npm, Python 3, Git, AWS CLI, Minisign and GnuPG (`gpg`/`gpgv`).
+- Publisher Node/npm, Python 3, Git, GitHub CLI, AWS CLI, Minisign and GnuPG (`gpg`/`gpgv`).
   No keyring GitHub variable or environment override is required.
 - Reuse `RUNTIME_PUBLISH_ROLE_ARN` for credential setup. Deploy Baycat's
   `release/docker/aws-distribution.yml` update first: the Runtime role must trust
-  this workflow and permit scoped `devkits/*` Get/Put/List operations. Source
+  this workflow and permit the existing `devkits/*` Get/Put/List operations for
+  metadata. Source
   changes do not apply IAM policy updates. Secrets never enter artifacts or invocation files.
 - Publish Script's required testing export and refresh Integration's root/Kit npm
   pins and locks before releasing Extension. Publish the new meow CLI first.
   Deploy new Hub/Lion contract support before live Wave contract acquisition.
-- Authenticated S3 reads establish absence and preserve the original signed bytes
+- Authenticated S3 reads establish metadata absence and preserve the original signed bytes
   on retries. Only S3's missing-object response permits a first publication;
   permission/network failures stop it. Public CDN reads verify uploaded bytes,
   never establish absence. Version files use immutable caching, indices use
@@ -308,14 +316,13 @@ node --test scripts/ci/developer-kit.test.cjs scripts/ci/workflow-contract.test.
 
 ## Plugin SDK distribution
 
-`developer-sdk.yaml` dispatches the internal `run-developer-sdk.yaml` executor
-from Releases `main` to publish the ordinary Cargo SDK independently from Kit
+`developer-sdk.yaml` runs from Releases `main` to publish the ordinary Cargo SDK independently from Kit
 distribution. Select Integration's exact `sdk-plugin-vX.Y.Z` tag and full commit;
 the tag version is the public `mhome-plugin-sdk` facade version. The source owner
 keeps its three crate versions independent. No SDK release is implied by a Kit
 release or by source staging.
 
-The macOS publisher uses its existing flat Integration, Foundation and Releases
+The macOS publisher uses GitHub CLI and its existing flat Integration, Foundation and Releases
 checkouts. It freezes the SDK source and publisher, tests the normalized crates
 without credentials, then checks an exact source inventory before publication.
 Publication builds and tests with registry dependencies and no local path patches,
@@ -340,14 +347,13 @@ Failed partial publication has no completion
 receipt; its archived plan remains available. Changed package contents, including
 dependencies, packaged lockfiles and notices, still require a new unoccupied version.
 
-Both records survive owned-worktree cleanup in the existing distribution bucket at
-`devkits/extension/sdk/<source-tag>/<source-commit>/<plan-sha256>/`. The workflow prints
-their `https://install.mhome.ai/` URLs. Writes are conditional and read back byte for
-byte; exact retries reuse identical records and uncertain writes are resolved only
-by reads. This uses the existing `RUNTIME_PUBLISH_ROLE_ARN` through GitHub OIDC,
-with `devkits/*` Get/Put access; no new bucket, role variable or secret is introduced.
-Apply Baycat's `release/docker/aws-distribution.yml` update before running the
-workflow. The existing role must trust the SDK executor from Releases `main`.
+The plan is attached to a draft GitHub Release named
+`sdk-plugin-vX.Y.Z-plan-<plan-sha256>` before registry writes. Separate frozen plans
+retain separate records; a failed publication leaves its draft for maintainers.
+After every crate verifies, the workflow attaches the receipt and publishes the
+Release without marking it Latest. Exact retries verify the original assets and
+reuse them; uncertain writes are reconciled by reads. Archive steps use the
+workflow's GitHub token. The SDK workflow does not need S3 or an AWS role.
 Apache-2.0 LICENSE/NOTICE files ship with every crate.
 The publication step uses the existing standard `CARGO_REGISTRY_TOKEN` secret;
 Releases must have access to that credential before invocation. This source change
