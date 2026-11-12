@@ -61,7 +61,16 @@ async function main() {
  } else if(action==='prepare') {
    await publisher.prepare(artifacts,{cliVersion,orchestratorCommit:process.env.GITHUB_SHA});
  } else if(action==='upload') await publisher.publish(artifacts);
- else if(action==='accept') await require('./developer-kit-accept.cjs').accept(kit,version,platform,path.join(work,'acceptance'));
+ else if(action==='accept') {
+   // The CLI puts worker TMPDIR inside its home. Keep room for the Unix
+   // socket that sccache creates there when it starts a compiler daemon.
+   const directory=await fs.mkdtemp(path.join(os.tmpdir(),'meow-kit-'));
+   try {
+     await require('./developer-kit-accept.cjs').accept(kit,version,platform,directory);
+   } finally {
+     await fs.rm(directory,{recursive:true,force:true});
+   }
+ }
  else if(action==='promote') {
    // Platform checks can take time. Reject a deleted/moved remote source tag
    // before making this candidate discoverable, even if its old signature is valid.
