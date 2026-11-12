@@ -12,7 +12,7 @@ case "$CHANNEL" in
     if [ -n "${WORK_SUFFIX:-}" ]; then
       [ "$PRODUCT_PLATFORM" = "$WORK_SUFFIX" ] || fail "$RELEASE_TAG is $PRODUCT_PLATFORM; this runner is $WORK_SUFFIX"
     fi
-    bash "$HERE/${CHANNEL}-release.sh"
+    bash "$HERE/${CHANNEL}-release.sh" "$@"
     ;;
   install)
     bash "$HERE/deploy-native-install.sh"

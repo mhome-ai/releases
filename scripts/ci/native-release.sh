@@ -29,7 +29,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
-prepare_product_sources --with-meowcore
+macos_download_cache=""
+case "${1:-}" in
+  --prepared-macos)
+    BAYCAT_REVISION="$(node "$CI_ROOT/macos-ffmpeg-inputs.js" check "$WORK_ROOT" "$tag" "$PRODUCT_PLATFORM")"
+    BAYCAT_DIR="$WORK_ROOT/baycat"
+    macos_download_cache="$WORK_ROOT/macos-downloads"
+    ;;
+  '') prepare_product_sources --with-meowcore ;;
+  *) fail "unknown native release argument: $1" ;;
+esac
 cd "$BAYCAT_DIR"
 node -e "require('./scripts/lib/app-component-state').assertLockedFingerprints()"
 node -e '
@@ -59,7 +68,7 @@ case "$PRODUCT_PLATFORM" in
     bash scripts/release/mac/check-mac-runner.sh --skip-rust
     bash scripts/release/native/package-macos-runtime.sh \
       "$PRODUCT_PLATFORM" "$rust_target" \
-      "build/native-runtime/${PRODUCT_PLATFORM}"
+      "build/native-runtime/${PRODUCT_PLATFORM}" release prod "$macos_download_cache"
     assets_dir="build/native-runtime/${PRODUCT_PLATFORM}"
     ;;
   linux-arm64|linux-x64)

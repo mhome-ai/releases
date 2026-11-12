@@ -2,11 +2,13 @@
 
 const assert = require("node:assert/strict");
 const { execFileSync } = require("node:child_process");
+const { createHash } = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { cleanupReleaseSources } = require("./cleanup-release-sources");
+const { main: macosInputs, readPreparedInputs, checkInputs } = require("./macos-ffmpeg-inputs");
 const {
   fetchTag,
   prepareReleaseSources,
@@ -48,6 +50,108 @@ function provisionClone(home, name, origin, branch) {
   execFileSync("git", ["clone", "--branch", branch, "-q", origin.bare, dest]);
   return dest;
 }
+
+test("macOS Native freezes once and hands verified inputs to the packer without a download token", (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "mhome-mac-inputs-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const agent = createOrigin(t, {
+    name: "agent", branch: "main", tag: "v0.11.5",
+    files: { "Cargo.toml": '[workspace.package]\nversion = "0.11.5"\n' },
+  });
+  const meowcore = createOrigin(t, {
+    name: "meowcore", branch: "main", tag: "v1.0.12",
+    files: { "release/sources/agent.json": JSON.stringify({
+      schemaVersion: 1, repository: "mhome-ai/agent", version: "0.11.5", commit: agent.commit,
+    }) },
+  });
+  const bundle = path.resolve(__dirname, "../../../baycat/scripts/bundle");
+  const pins = JSON.parse(fs.readFileSync(path.join(bundle, "ffmpeg-macos-release.json"), "utf8"));
+  const assets = new Map();
+  for (const platform of ["darwin-arm64", "darwin-x64"]) {
+    for (const [suffix, key] of [["", "archiveSha256"], ["-sources", "sourcesSha256"]]) {
+      const name = `ffmpeg-${pins.version}-${platform}${suffix}.tar.gz`;
+      const bytes = `fixture for ${name}`;
+      assets.set(name, bytes);
+      pins.platforms[platform][key] = createHash("sha256").update(bytes).digest("hex");
+    }
+  }
+  const baycat = createOrigin(t, {
+    name: "baycat", branch: "master", tag: "t20261001-01",
+    files: {
+      ".gitignore": "/build/\n",
+      "scripts/release/check-foundation-pins.js": "process.exit(0);\n",
+      "release/sources/dependencies.json": JSON.stringify({ schemaVersion: 1, sources: {
+        meowcoreRust: { repository: "mhome-ai/meowcore-rust", version: "1.0.12", commit: meowcore.commit },
+      } }),
+      "scripts/bundle/ffmpeg-macos-release.json": JSON.stringify(pins),
+      "scripts/bundle/ffmpeg-macos.js": fs.readFileSync(path.join(bundle, "ffmpeg-macos.js")),
+      "scripts/bundle/verified-download-cache.js": fs.readFileSync(path.join(bundle, "verified-download-cache.js")),
+    },
+  });
+  provisionClone(home, "agent", agent, "main");
+  provisionClone(home, "meowcore-rust", meowcore, "main");
+  provisionClone(home, "baycat", baycat, "master");
+
+  const originalEnv = { PATH: process.env.PATH, GH_TOKEN: process.env.GH_TOKEN, GITHUB_TOKEN: process.env.GITHUB_TOKEN };
+  t.after(() => {
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+  const actualGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+  const bin = path.join(home, "bin");
+  const requestLog = path.join(home, "requested-assets");
+  write(path.join(bin, "git"), `#!${process.execPath}
+const assert = require('node:assert/strict');
+assert.notEqual(process.env.GH_TOKEN, 'fixture-private-read');
+const r = require('node:child_process').spawnSync(${JSON.stringify(actualGit)}, process.argv.slice(2), { stdio: 'inherit' });
+process.exit(r.status ?? 1);
+`);
+  write(path.join(bin, "gh"), `#!${process.execPath}
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const [release, download, tag, repoFlag, repo, pattern, asset, output, target] = process.argv.slice(2);
+assert.deepEqual([release, download, tag, repoFlag, repo, pattern, output],
+  ['release', 'download', ${JSON.stringify(`ffmpeg-${pins.version}`)}, '--repo', 'mhome-ai/internal-releases', '--pattern', '--output']);
+assert.equal(process.env.GH_TOKEN, 'fixture-private-read');
+assert.equal(process.env.GITHUB_TOKEN, undefined);
+const bytes = ${JSON.stringify(Object.fromEntries(assets))}[asset];
+assert.ok(bytes, asset);
+fs.writeFileSync(target, bytes);
+fs.appendFileSync(${JSON.stringify(requestLog)}, asset + '\\n');
+`);
+  for (const name of ["git", "gh"]) fs.chmodSync(path.join(bin, name), 0o755);
+  process.env.PATH = `${bin}${path.delimiter}${originalEnv.PATH}`;
+  for (const [tag, platform] of [["nmr20261001-01", "darwin-arm64"], ["nmx20261001-01", "darwin-x64"]]) {
+    const root = path.join(home, ".mhome", "work", platform);
+    macosInputs(["prepare", root, tag, platform], home);
+    assert.throws(() => checkInputs(readPreparedInputs(root, tag, platform, home)),
+      /Missing or changed verified FFmpeg input/);
+    process.env.GH_TOKEN = "fixture-private-read";
+    process.env.GITHUB_TOKEN = "fixture-publisher";
+    macosInputs(["download", root, tag, platform], home);
+    assert.equal(process.env.GH_TOKEN, undefined);
+    const inputs = readPreparedInputs(root, tag, platform, home);
+    assert.equal(inputs.revision, baycat.commit);
+    checkInputs(inputs);
+    for (const [name, digest] of inputs.files) {
+      const target = path.join(root, name);
+      assert.equal(inputs.cache.restoreVerifiedDownload({
+        cacheRoot: inputs.cacheRoot, expectedSha256: digest, targetPath: target,
+      }), true);
+      assert.equal(fs.readFileSync(target, "utf8"), assets.get(name));
+    }
+    const damaged = inputs.cache.cacheObjectPath(inputs.cacheRoot, inputs.files[0][1]);
+    fs.chmodSync(damaged, 0o644);
+    fs.writeFileSync(damaged, "changed after verification");
+    assert.throws(() => checkInputs(inputs), /Missing or changed verified FFmpeg input/);
+    assert.throws(() => readPreparedInputs(root, tag, "linux-x64", home), /matching target/);
+    cleanupReleaseSources(root, home);
+    assert.equal(fs.existsSync(root), false);
+  }
+  assert.deepEqual(fs.readFileSync(requestLog, "utf8").trim().split("\n"), [...assets.keys()]);
+});
 
 test("prepares sibling worktrees from product tags and leaves HEAD clones alone", (t) => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "mhome-home-"));

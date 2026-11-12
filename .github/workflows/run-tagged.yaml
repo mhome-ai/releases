@@ -33,6 +33,10 @@ jobs:
       contents: write
       id-token: write
       packages: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_CHANNEL: ${{ inputs.channel }}
+      WORK_SUFFIX: ${{ inputs.work_suffix }}
     steps:
       - name: Prepare a disposable Linux image builder
         if: runner.os == 'Linux' && inputs.channel == 'native'
@@ -51,17 +55,60 @@ jobs:
           driver: docker
           use: false
           cleanup: false
-      - name: Fetch tagged orchestrator and run
+      - name: Fetch tagged orchestrator
+        id: snapshot
+        shell: bash
+        env:
+          ORCHESTRATOR_REF: ${{ inputs.orchestrator_ref }}
+        run: |
+          set -euo pipefail
+          case "$RELEASE_CHANNEL" in plugin) echo "Plugin releases require run-tagged-plugin.yaml" >&2; exit 1 ;; esac
+          if [ "$(uname -s)" = Darwin ]; then
+            export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+          fi
+          mhome="${MHOME_ROOT:-$HOME/.mhome}"
+          releases="$mhome/releases"
+          tag="${RELEASE_TAG:?}"
+          [ -e "$releases/.git" ] || {
+            echo "::error::runner is missing $releases; provision ~/.mhome on this machine"
+            exit 1
+          }
+          git -C "$releases" fetch --prune origin
+          work_id="${GITHUB_RUN_ID}-${WORK_SUFFIX:-$GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}"
+          work="$mhome/work/${work_id}"
+          mkdir -p "$mhome/work"
+          mkdir "$work"
+          printf 'work_root=%s\n' "$work" >> "$GITHUB_OUTPUT"
+          if [ -n "${ORCHESTRATOR_REF:-}" ]; then
+            git -C "$releases" fetch origin "${GITHUB_REF}"
+            git -C "$releases" worktree add --detach "$work/releases" "$ORCHESTRATOR_REF"
+          else
+            git -C "$releases" fetch origin "+refs/tags/${tag}:refs/tags/${tag}"
+            git -C "$releases" worktree add --detach "$work/releases" "$tag"
+          fi
+      - name: Freeze macOS Native sources
+        if: runner.os == 'macOS' && inputs.channel == 'native'
+        working-directory: ${{ steps.snapshot.outputs.work_root }}
+        shell: bash
+        env:
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
+        run: node releases/scripts/ci/macos-ffmpeg-inputs.js prepare "$PWD" "$RELEASE_TAG" "$WORK_SUFFIX"
+      - name: Download pinned macOS FFmpeg inputs
+        if: runner.os == 'macOS' && inputs.channel == 'native'
+        working-directory: ${{ steps.snapshot.outputs.work_root }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GPR_TOKEN }}
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
+        run: node releases/scripts/ci/macos-ffmpeg-inputs.js download "$PWD" "$RELEASE_TAG" "$WORK_SUFFIX"
+      - name: Run tagged orchestrator
         shell: bash
         env:
           BUILDX_BUILDER: ${{ steps.desktop-buildx.outputs.name || steps.buildx.outputs.name }}
-          RELEASE_TAG: ${{ inputs.tag }}
-          RELEASE_CHANNEL: ${{ inputs.channel }}
-          ORCHESTRATOR_REF: ${{ inputs.orchestrator_ref }}
-          WORK_SUFFIX: ${{ inputs.work_suffix }}
           INITIALIZE_CATALOG: ${{ inputs.initialize_catalog }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INTERNAL_RELEASES_READ_TOKEN: ${{ runner.os == 'macOS' && (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.GPR_TOKEN || '' }}
           DESKTOP_PUBLISH_ROLE_ARN: ${{ inputs.channel == 'desktop' && vars.DESKTOP_PUBLISH_ROLE_ARN || '' }}
           RUNTIME_PUBLISH_ROLE_ARN: ${{ (inputs.channel == 'native' || inputs.channel == 'install') && vars.RUNTIME_PUBLISH_ROLE_ARN || '' }}
           NATIVE_INSTALL_PUBLISH_ROLE_ARN: ${{ (inputs.channel == 'install' || inputs.channel == 'compose') && vars.NATIVE_INSTALL_PUBLISH_ROLE_ARN || '' }}
@@ -81,32 +128,27 @@ jobs:
           DOCKERHUB_TOKEN: ${{ inputs.channel == 'native' && (inputs.work_suffix == 'linux-arm64' || inputs.work_suffix == 'linux-x64') && secrets.DOCKERHUB_TOKEN || '' }}
         run: |
           set -euo pipefail
-          case "$RELEASE_CHANNEL" in plugin) echo "Plugin releases require run-tagged-plugin.yaml" >&2; exit 1 ;; esac
+          mhome="${MHOME_ROOT:-$HOME/.mhome}"
+          work_id="${GITHUB_RUN_ID}-${WORK_SUFFIX:-$GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}"
+          work="$mhome/work/$work_id"
+          export WORK_ID="$work_id" WORK_ROOT="$work" RELEASES_DIR="$work/releases" MHOME_ROOT="$mhome"
+          if [ "$RELEASE_CHANNEL" = native ] && [ "$(uname -s)" = Darwin ]; then
+            bash "$RELEASES_DIR/scripts/ci/run.sh" --prepared-macos
+          else
+            bash "$RELEASES_DIR/scripts/ci/run.sh"
+          fi
+      - name: Clean owned release worktrees
+        if: always() && steps.snapshot.outputs.work_root != ''
+        shell: bash
+        run: |
+          set -euo pipefail
           if [ "$(uname -s)" = Darwin ]; then
             export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
           fi
           mhome="${MHOME_ROOT:-$HOME/.mhome}"
-          releases="$mhome/releases"
-          tag="${RELEASE_TAG:?}"
-          [ -e "$releases/.git" ] || {
-            echo "::error::runner is missing $releases; provision ~/.mhome on this machine"
-            exit 1
-          }
-          git -C "$releases" fetch --prune origin
-          work_id="${GITHUB_RUN_ID}-${WORK_SUFFIX:-$GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}"
-          work="$mhome/work/${work_id}"
-          if [ -e "$work" ]; then
-            git -C "$releases" worktree remove --force "$work/releases" 2>/dev/null || true
-            git -C "$releases" worktree prune
-            rm -rf "$work"
+          work="$mhome/work/${GITHUB_RUN_ID}-${WORK_SUFFIX:-$GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}"
+          if [ -f "$work/releases/scripts/ci/cleanup-release-sources.js" ]; then
+            node "$work/releases/scripts/ci/cleanup-release-sources.js" "$work"
+          elif [ -d "$work" ]; then
+            rmdir "$work"
           fi
-          mkdir -p "$work"
-          if [ -n "${ORCHESTRATOR_REF:-}" ]; then
-            git -C "$releases" fetch origin "${GITHUB_REF}"
-            git -C "$releases" worktree add --detach "$work/releases" "$ORCHESTRATOR_REF"
-          else
-            git -C "$releases" fetch origin "+refs/tags/${tag}:refs/tags/${tag}"
-            git -C "$releases" worktree add --detach "$work/releases" "$tag"
-          fi
-          export WORK_ID="$work_id" WORK_ROOT="$work" RELEASES_DIR="$work/releases" MHOME_ROOT="$mhome"
-          bash "$work/releases/scripts/ci/run.sh"

@@ -59,28 +59,22 @@ Agent is also a source input. Provision `~/.mhome/agent` from the private `mhome
 
 ## Private FFmpeg build inputs
 
-Mac Host and desktop packaging consume the immutable FFmpeg binary/source pair
-from `mhome-ai/internal-releases`, with SHA-256 pins owned by Baycat. Android and
-Mac downloads use the organization Secret `GPR_TOKEN`. It needs
+Mac Native Host packaging consumes the fixed FFmpeg binary/source pair from
+`mhome-ai/internal-releases`, with SHA-256 pins owned by Baycat. Android and Mac
+Native downloads use the existing organization Secret `GPR_TOKEN`. It needs
 **Contents: read** on `mhome-ai/internal-releases`.
-Grant this public orchestrator access to the existing organization Secret through
-its repository access settings. No token value needs to be read or copied, and no
-FFmpeg-only token is needed. When changing a Secret from private repositories to
-selected repositories, retain the existing private consumers and add `releases`;
-do not silently replace their access or expose the credential to every public
-repository. New repositories then need explicit inclusion in the selected list.
-GitHub web settings can change the access policy without replacing the value;
-the documented create/update REST endpoint requires the encrypted value when
-changing visibility. An already-selected Secret supports adding repository IDs
-through the separate access API without retrieving its value.
+Grant the Releases repository access through the Secret's selected-repository
+policy, preserving existing consumers. No additional FFmpeg Secret is required.
 
-Only Mac native/desktop jobs map that Secret to the process variable
-`INTERNAL_RELEASES_READ_TOKEN`. This variable is an internal handoff, not another
-GitHub Secret to create. The downloader passes it as `GH_TOKEN` only to its private
-asset subprocess; product publication retains its repository-scoped
-`GITHUB_TOKEN`. Local builds can use ordinary `gh` authentication. Never put token
-values in source, logs or build artifacts. Verify the real private download after
-configuring the Secret; its name alone does not establish access or validity.
+The macOS Native workflow freezes the product sources once using the existing
+source preparation script. A separate step uses `GPR_TOKEN` as `GH_TOKEN` to
+download only the binary and source archives for the frozen target. It checks
+both SHA-256 digests and stores the files in the current invocation's verified
+download cache. The subsequent packer reuses that cache and checks the files
+again. Source checkout, npm and Cargo, signing, and publication do not receive
+this credential. Publication still uses the repository's `GITHUB_TOKEN`.
+The Tauri desktop app does not bundle Host and does not receive the credential.
+Local builds can use ordinary `gh` authentication.
 
 The product package includes the matching complete source archive and upstream
 license notices; recipients do not need private GitHub access. Linux retains its

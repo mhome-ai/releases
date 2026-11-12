@@ -450,4 +450,6 @@ module.exports = {
   prepareAgentSource,
   readMeowcorePin,
   requireExistingClone,
+  requireCleanWorktree,
+  verifyProductPins,
 };

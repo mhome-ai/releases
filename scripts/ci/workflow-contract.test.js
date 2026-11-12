@@ -4,7 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const ROOT = path.join(__dirname, "../..");
-const PRIVATE_RELEASE_AUTH = "INTERNAL_RELEASES_READ_TOKEN: ${{ runner.os == 'macOS' && (inputs.channel == 'native' || inputs.channel == 'desktop') && secrets.GPR_TOKEN || '' }}";
+const PRIVATE_RELEASE_AUTH = "GH_TOKEN: ${{ secrets.GPR_TOKEN }}";
 
 function read(relative) {
   return fs.readFileSync(path.join(ROOT, relative), "utf8");
@@ -23,11 +23,19 @@ function productWorkflows() {
   );
 }
 
-test("only Mac product packaging receives the private FFmpeg input credential", () => {
+test("only macOS Native FFmpeg downloads receive the private release credential", () => {
   const workflow = read(".github/workflows/run-tagged.yaml");
-  assert.match(workflow, /GH_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
-  assert.ok(workflow.includes(PRIVATE_RELEASE_AUTH));
-  assert.doesNotMatch(workflow, /secrets\.INTERNAL_RELEASES_READ_TOKEN/);
+  const phases = workflow.split(/^      - name: /m).slice(1);
+  const download = phases.find((step) => step.startsWith("Download pinned macOS FFmpeg inputs\n"));
+  const build = phases.find((step) => step.startsWith("Run tagged orchestrator\n"));
+  assert.ok(download && build);
+  assert.match(download, /if: runner\.os == 'macOS' && inputs\.channel == 'native'/);
+  assert.ok(download.includes(PRIVATE_RELEASE_AUTH));
+  assert.match(download, /macos-ffmpeg-inputs\.js download/);
+  assert.doesNotMatch(phases.filter((step) => step !== download).join("\n"), /GPR_TOKEN/);
+  assert.match(build, /GH_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
+  assert.match(build, /run\.sh" --prepared-macos/);
+  assert.doesNotMatch(workflow, /INTERNAL_RELEASES_READ_TOKEN/);
   assert.match(read("README.md"), /\*\*Contents: read\*\* on `mhome-ai\/internal-releases`/);
 });
 
@@ -49,8 +57,8 @@ test("workflows never clone and never use GitHub-hosted compile jobs", () => {
     assert.doesNotMatch(text, /actions\/checkout/, file);
     assert.doesNotMatch(text, /ubuntu-latest/, file);
     assert.doesNotMatch(text, /ubuntu-22\.04/, file);
-    // Git source access still uses runner SSH. Only this exact Mac asset
-    // download handoff can use the existing cross-repository read credential.
+    // Git source access still uses runner SSH. Only the asset download
+    // step can use the cross-repository credential.
     const sourceAuthText = file.endsWith("/run-tagged.yaml")
       ? text.replace(PRIVATE_RELEASE_AUTH, "")
       : text;
