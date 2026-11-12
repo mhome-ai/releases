@@ -22,6 +22,13 @@ function productWorkflows() {
   );
 }
 
+test("only Mac product packaging receives the private FFmpeg input credential", () => {
+  const workflow = read(".github/workflows/run-tagged.yaml");
+  assert.match(workflow, /GH_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
+  assert.match(workflow, /INTERNAL_RELEASES_READ_TOKEN:.*runner\.os == 'macOS'.*inputs\.channel == 'native'.*inputs\.channel == 'desktop'.*secrets\.INTERNAL_RELEASES_READ_TOKEN/);
+  assert.match(read("README.md"), /restricted to that private repository with \*\*Contents: read\*\*/);
+});
+
 test("Matter builds receive no publisher key or GitHub write credential", () => {
   const text = read(".github/workflows/run-tagged-matter.yaml");
   const build = text.split("      - name: Build and verify the firmware archive")[1].split("      - name:")[0];

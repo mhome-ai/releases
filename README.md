@@ -57,6 +57,21 @@ Composing an edit does not recreate already-running containers. Rebuild with
 
 Agent is also a source input. Provision `~/.mhome/agent` from the private `mhome-ai/agent` repository. After checking out MeowCore, source preparation reads its `release/sources/agent.json`, fetches that exact full commit and creates an adjacent `agent` worktree. It does not use the canonical checkout's current HEAD. Cleanup includes the Agent worktree. The Agent commit must be available on origin before releasing the consumer tag; these scripts do not publish it.
 
+## Private FFmpeg build inputs
+
+Mac Host and desktop packaging consume the immutable FFmpeg binary/source pair
+from `mhome-ai/internal-releases`, with SHA-256 pins owned by Baycat. Configure
+`INTERNAL_RELEASES_READ_TOKEN` in this repository as a fine-grained credential
+restricted to that private repository with **Contents: read**. The ordinary
+`GITHUB_TOKEN` only reads this orchestrator repository and cannot download those
+private inputs. This input credential does not replace the publication token and
+is injected only for Mac native/desktop jobs. Local builds can use ordinary `gh`
+authentication. Never put token values in source, logs or build artifacts.
+
+The product package includes the matching complete source archive and upstream
+license notices; recipients do not need private GitHub access. Linux retains its
+separately pinned public FFmpeg route pending corresponding-source qualification.
+
 ## Shared CI source bootstrap
 
 `scripts/ci/source-worktree.cjs` is used by Foundation, Agent, Tiger and MeowCore CI. Runners pre-provision each repository under `~/.mhome/` with their existing GitHub read access. The helper fetches the event commit, creates a detached worktree under a unique `~/.mhome/work/<repo>-<run>-<job>-<attempt>/`, and prepares the exact Agent pin for consumers. It never clones or changes canonical checkout branches, refuses existing work directories, and rolls back partial preparation. Cleanup removes only recorded task-owned worktrees. Workflows load the helper from the Releases main commit they just fetched; deliver this helper before dependent workflow updates.
