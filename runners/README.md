@@ -54,10 +54,16 @@ separate from the 16 GiB compiler cache.
 Do not use `down -v`. Cargo objects live under `cargo-target/debian11` only for
 the duration of one job.
 
-Both images include SHA-256 pinned FFmpeg/FFprobe `b6.1.1` static binaries on
-PATH, matching Camera's existing media fixture toolchain. Debian 11's FFmpeg is
-too old for the `-fps_mode` fixture contract. The image smoke test encodes H264,
-HEVC Main10 and Opus, probes Main10 and decodes it as the unprivileged runner.
+Both images include SHA-256 pinned FFmpeg/FFprobe
+`n9.0.2-39-g7adfbe40dc` GPL static binaries from BtbN's
+`autobuild-2026-10-31-12-59` release. Upstream retains month-end builds for two
+years; daily builds expire after 14 days. Refresh this explicit pin before its
+retention ends. `LICENSE` and the input receipt are installed under
+`/usr/local/share/doc/ffmpeg`. These are internal builder dependencies; external
+redistribution needs the complete corresponding source and third-party notices.
+Debian 11's FFmpeg is too old for the `-fps_mode` fixture contract. The image smoke
+test encodes H264, HEVC Main10 and Opus, probes Main10 and decodes it as the
+unprivileged runner.
 Product packaging still selects and verifies its own bundled media tools.
 
 The build CLI is Node 22.23.5, meeting the shared Script SDK/builder's Node 22
