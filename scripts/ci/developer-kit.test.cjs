@@ -163,10 +163,12 @@ test("publish stores only metadata on S3 and verifies GitHub bytes before CAS in
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const bytes = Buffer.from("standalone kit");
   const node = Buffer.from("managed Node");
+  const declaration = Buffer.from("export type Card = object;");
   const tag = "kit-ui-v1.6.0";
   fs.writeFileSync(path.join(root, "kit.tar.gz"), bytes);
   fs.writeFileSync(path.join(root, "node-darwin-arm64.tar.gz"), node);
   fs.writeFileSync(path.join(root, "acceptance.json"), "{}");
+  fs.writeFileSync(path.join(root, "default-pod.d.ts"), declaration);
   const kitFile = { path: "kit.tar.gz", size: bytes.length, sha256: hash(bytes) };
   const nodeFile = { path: "node-darwin-arm64.tar.gz", size: node.length, sha256: hash(node) };
   const asset = ({ path, ...metadata }) => ({ ...metadata, url: assetUrl(tag, path) });
@@ -178,7 +180,12 @@ test("publish stores only metadata on S3 and verifies GitHub bytes before CAS in
     source: { tag, commit: "a".repeat(40) },
     orchestratorCommit: "b".repeat(40),
     platforms: { "darwin-arm64": { payload: asset(kitFile), asset: asset(nodeFile) } },
-    files: [kitFile, nodeFile, { path: "acceptance.json", size: 2, sha256: hash(Buffer.from("{}")) }],
+    files: [
+      kitFile,
+      nodeFile,
+      { path: "acceptance.json", size: 2, sha256: hash(Buffer.from("{}")) },
+      { path: "default-pod.d.ts", size: declaration.length, sha256: hash(declaration) },
+    ],
   };
   fs.writeFileSync(path.join(root, "kit.json"), JSON.stringify(manifest));
   const previous = {
@@ -233,6 +240,8 @@ test("publish stores only metadata on S3 and verifies GitHub bytes before CAS in
     signer: async (value) => Buffer.from(JSON.stringify(value)),
   });
   assert.equal(writes.includes("devkits/ui/index.json"), false);
+  assert.deepEqual(objects.get("devkits/ui/1.6.0/default-pod.d.ts"), declaration);
+  assert.equal(github.releases.get(tag).files.has("default-pod.d.ts"), false);
   await publish(root, {
     command,
     fetcher,

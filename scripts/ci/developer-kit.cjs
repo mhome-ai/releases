@@ -8,6 +8,18 @@ const { assetUrl, releaseAssets } = require("./github-developer-release.cjs");
 const BASE = "https://install.mhome.ai/devkits";
 const METADATA = new Set(["kit.json", "acceptance.json", "node-SHASUMS256.txt", "node-SHASUMS256.txt.sig",
   "contracts.fixture.json", "bindings.fixture.json"]);
+const UI_METADATA = new Set([
+  "metadata.json",
+  "index.d.ts",
+  "react.d.ts",
+  "default.d.ts",
+  "default-pod.d.ts",
+  "generated.d.ts",
+  "skin-package.schema.json",
+  "card-skins.schema.json",
+  "README.md",
+  "dependencies.json",
+]);
 const GITHUB_ASSET_MIN_CLI = "1.19.0";
 const sha = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
 const run = (command, args, options = {}) =>
@@ -383,7 +395,9 @@ async function publish(
       archives.set(name, part.url);
     }
   }
-  if (!archives.size || files.some(file => !archives.has(file.path) && !METADATA.has(file.path)))
+  if (!archives.size || files.some(({path: name}) =>
+    !archives.has(name) && !METADATA.has(name) &&
+    !(manifest.kit === "ui" && UI_METADATA.has(name))))
     throw new Error("Invalid DevKit archive inventory");
   for (const file of files) {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9.-]+$/.test(file.path))
