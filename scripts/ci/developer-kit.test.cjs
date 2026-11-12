@@ -7,6 +7,19 @@ const crypto = require("node:crypto");
 const { publish, promoteIndex, verifySource } = require("./developer-kit.cjs");
 const hash = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
 
+test("native acceptance rejects source patches masquerading as registry SDK installation", async t => {
+  const {acceptNativeProjects}=require("./developer-kit-accept.cjs");
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),"kit-native-registry-"));
+  t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+  const make=(...args)=>{
+    assert.equal(args[1],"init");
+    const project=args[2];fs.mkdirSync(project);
+    fs.writeFileSync(path.join(project,"extension.json"),'{"schemaVersion":1,"projectId":"test","plugin":"plugin.toml"}');
+    fs.writeFileSync(path.join(project,"Cargo.lock"),'[[package]]\nname = "mhome-plugin-sdk"\nversion = "0.5.0"\n');
+  };
+  await assert.rejects(acceptNativeProjects({directory,version:"0.9.0",platform:"darwin-arm64",sdkVersion:"0.5.0",make}),/must resolve from the public registry/);
+});
+
 test("Extension acceptance compiles UI files with their required entry manifest", async t => {
   const {addExtensionUiFixture} = require("./developer-kit-accept.cjs");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "kit-extension-ui-"));

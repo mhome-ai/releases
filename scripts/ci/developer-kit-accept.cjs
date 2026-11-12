@@ -120,6 +120,16 @@ async function accept(kit, version, platform, directory) {
   assert.equal(npm.version, runtime.npmVersion);
   if(kit!=="ui") {
     await acceptDomain({kit,version,platform,directory,manifest,manifestBytes,home,node,env,make});
+    if(kit==="extension") {
+      const metadata=JSON.parse(await fs.readFile(path.join(home,"tools/make/kits",kit,version,"kit/package.json")));
+      if(metadata.nativeSdkVersion) {
+        // The preceding JS checks intentionally hide system Node/npm. Native
+        // development separately needs the runner's ordinary Rust/C toolchain.
+        const nativeEnv={...process.env}; delete nativeEnv.NODE_PATH; delete nativeEnv.NODE_OPTIONS;
+        const nativeMake=(...args)=>JSON.parse(run(binary,["--home",home,"make",...args],{env:nativeEnv}));
+        await acceptNativeProjects({directory,version,platform,sdkVersion:metadata.nativeSdkVersion,make:nativeMake});
+      }
+    }
     make("kit","remove",kit,"--version",version);
     await fs.writeFile(path.join(directory,"result.json"),JSON.stringify({kit,version,platform,cliVersion:cli.version,manifestSha256:sha(manifestBytes),passed:true})+"\n");
     return;
@@ -141,6 +151,35 @@ async function accept(kit, version, platform, directory) {
       2
     ) + "\n"
   );
+}
+async function acceptNativeProjects({directory,version,platform,sdkVersion,make}) {
+  const target={"darwin-arm64":"aarch64-apple-darwin","darwin-x64":"x86_64-apple-darwin",
+    "linux-arm64":"aarch64-unknown-linux-gnu","linux-x64":"x86_64-unknown-linux-gnu"}[platform];
+  assert(target,"Unsupported native acceptance platform");
+  for(const combined of [false,true]) {
+    const project=path.join(directory,combined?"native-combined":"native-only");
+    const args=["extension","init",project,"--kit-version",version,"--plugin",combined?"test-combined":"test-native"];
+    if(combined)args.push("--integration","test.device");
+    make(...args);
+    const descriptor=JSON.parse(await fs.readFile(path.join(project,"extension.json")));
+    assert.equal(Boolean(descriptor.integrations),combined);
+    assert.equal(descriptor.integrations?.[0].scriptProject,undefined);
+    await assert.rejects(fs.stat(path.join(project,"ts")),{code:"ENOENT"});
+    // A successful local patch is not proof that public SDK installation works.
+    const lock=await fs.readFile(path.join(project,"Cargo.lock"),"utf8");
+    for(const name of ["mhome-plugin-sdk","mhome-plugin-runtime","mhome-plugin-service-api"]) {
+      const entry=lock.split("[[package]]").find(block=>block.includes(`name = "${name}"`));
+      assert(entry?.includes('source = "registry+https://github.com/rust-lang/crates.io-index"'),`${name} must resolve from the public registry`);
+      if(name==="mhome-plugin-sdk")assert(entry.includes(`version = "${sdkVersion}"`));
+    }
+    // Both closed fixtures use identical registry SDK paths. Reuse those
+    // compiler outputs within this invocation; retain ordinary test assertions.
+    await fs.mkdir(path.join(project,".cargo"));
+    await fs.writeFile(path.join(project,".cargo/config.toml"),
+      `[build]\ntarget-dir=${JSON.stringify(path.resolve(directory,"native-target"))}\n[profile.dev]\ndebug=0\n[profile.test]\ndebug=0\n`);
+    make("extension","validate","--project",project);
+    make("extension","native-test","--project",project,"--target",target);
+  }
 }
 // This is the offline toolchain gate. Desktop Preview uses a signed-in App,
 // active Space and the native host boundary; it has no standalone web server.
@@ -220,7 +259,7 @@ async function addExtensionUiFixture(project) {
     "fs.writeFileSync(path.join(output,'index.js'),'export const ready=true;');"+
     `fs.writeFileSync(path.join(output,'manifest.json'),${JSON.stringify(JSON.stringify(manifest))});`);
 }
-module.exports = { accept, acceptUiProjects, isolatedSystemTools, assertUiPreviewCommands, addExtensionUiFixture };
+module.exports = { accept, acceptUiProjects, acceptNativeProjects, isolatedSystemTools, assertUiPreviewCommands, addExtensionUiFixture };
 if (require.main === module)
   accept(...process.argv.slice(2)).catch((error) => {
     console.error(error);

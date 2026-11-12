@@ -191,6 +191,13 @@ node --test scripts/ci/desktop-release.test.js scripts/ci/publish-desktop-update
 Releases freezes, signs, verifies and distributes it. A release selects an exact
 `kit-<ui|extension|wave>-vX.Y.Z` source tag/full commit and an already published
 meow CLI version on all four supported Mac/Linux platforms (ARM64 and x64).
+Extension Kit 0.9.0 declares meow 1.18.0 as its minimum and requires the captured
+Plugin SDK version to be published first. Native acceptance initializes both
+Rust-only and Rust/YAML projects, rejects local SDK patches, and runs their Cargo
+tests against actual registry crates on the selected target. These checks use
+the runner's ordinary Rust/C tools, target libraries and linker; no compiler is
+bundled or installed by the Kit. The JS installer checks separately hide system
+Node/npm. Source-only staged SDK tests are not registry acceptance.
 Windows is not advertised or included in this first release. No Kit release
 deploys the App website or distributes the Wave firmware SDK.
 

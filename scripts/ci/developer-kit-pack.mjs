@@ -54,7 +54,7 @@ export async function pack(kit,source,output,tag,commit) {
       await fs.copyFile(path.join(source,from),path.join(output,to));await add(to);
     }
   }
-  const built={schemaVersion:1,kit,version:manifest.version,workerProtocol:1,minimumCliVersion:kit==='extension'?'1.16.0':'1.7.0',
+  const built={schemaVersion:1,kit,version:manifest.version,workerProtocol:1,minimumCliVersion:kit==='extension'?(manifest.minimumCliVersion??'1.16.0'):'1.7.0',
     source:{repository:`mhome-ai/${SOURCE[kit].repository}`,tag,commit},files,...(kit==='extension'?{payloads}:{})};
   await fs.writeFile(path.join(output,'kit-build.json'),JSON.stringify(built,null,2)+'\n');
   return built;
