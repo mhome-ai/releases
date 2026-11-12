@@ -15,6 +15,9 @@ export async function pack(kit,source,output,tag,commit) {
     const {packDevkit}=await import(pathToFileURL(path.join(source,'script/cards/pack-devkit.cjs')));
     return packDevkit(output,{sourceTag:tag,sourceCommit:commit});
   }
+  if(kit==='extension') {
+    run('npm',['ci','--omit=dev','--ignore-scripts','--no-bin-links','--no-audit','--no-fund'],{cwd:source});
+  }
   await fs.mkdir(output);
   const files=[],payloads={};
   const add=async name=>{const bytes=await fs.readFile(path.join(output,name));files.push({path:name,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});};
