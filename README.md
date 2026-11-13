@@ -31,7 +31,7 @@ repository. This git tree is the release orchestrator only.
 
 One workflow run is one machine. Native `nlr`/`nlx`/`nmr`/`nmx`/`nw`, Desktop
 `am`/`aw`/`alr`/`alx`. Mac native ARM (`nmr`) and Intel (`nmx`) share
-the Mac Mini and the `native-runtime-stable-macos` lock, so they queue. `am` and `aw` stay separate platform tags and share the
+the primary Mac runner and the `native-runtime-stable-macos` concurrency group, so they queue. `am` and `aw` stay separate platform tags and share the
 `desktop-release` concurrency group. Linux desktop ARM64 (`alr`) and x64 (`alx`) use their existing Linux runners and the `linux-docker-host` queue. Each publishes an AppImage, its updater signature and a Debian installer. They build inside the pinned Debian 12/WebKitGTK 4.1 desktop image, leaving Native's Debian 11 compatibility baseline unchanged. After a Linux Native release is public, the same workflow pushes that Host package to Docker Hub `mhomeai/meow-host` using the Native version. `latest` is published when both architectures of that version exist. This repo does not publish to GHCR. `deploy-meow-compose.yaml` publishes Baycat `docker/meow-compose.yml` to `https://install.mhome.ai/docker/stable/meow-compose.yml` on the same bucket.
 
 Signing keys are repository or org Secrets. `APPLE_TEAM_ID` and the
@@ -44,6 +44,18 @@ Runners must already have `~/.mhome/{baycat,integration,meowcore-rust,pallas-cat
 and SSH that can fetch GitHub. Pack scripts stay in the product trees.
 
 ## Runners
+
+The organization-level `mac-studio-release` runner on the development Mac
+holds `release-macos-primary` in the selected-repository `macOS release` group.
+The `mac-mini-release` runner on alimao holds `harness-macos-e2e` for scheduled
+Harness tests. Keep a single owner of the primary label so releases always route
+to the intended machine. To switch it back, wait for both runners to become
+idle before moving the label in GitHub's organization runner settings.
+
+The Mac Studio runner is a user LaunchAgent and comes online when its macOS user
+logs in. Give it its own flat source checkouts in `~/.mhome` and verify GitHub
+fetches from the service account. Desktop DMG packaging uses Python 3.10+ and a
+hash-pinned dmgbuild toolchain in a temporary virtual environment.
 
 Linux native builds use the recipes in `runners/`. Each container
 has a persistent `~/.mhome` volume, a deploy-key volume at `~/.ssh`, and the
@@ -147,7 +159,7 @@ node --test scripts/ci/matter-release.test.js scripts/ci/workflow-contract.test.
 
 首次目录初始化须用对应 workflow 手动输入 tag 和 `initialize_catalog=true`。完整规则见 integration 仓库 `release/README.md`。Catalog 保留插件源码与编排 commit；重试复用已经上传的完整签名快照。stable 的 `catalog.bundle.json` 最后原子写入，消费者不会读取中途更新的 JSON/签名对。同一 Linux 构建机或 Mac 签名环境仍使用公共资源锁。
 
-Plugin 使用 `run-tagged-plugin.yaml` 的单个作业，复用平台已有的自托管 runner：macOS 在 alimao 的 `release-macos-primary`，Linux 在现有 `release-linux-arm64` / `release-linux-amd64`。同一 runner 先运行质量检查并构建，再核对本地产物的源码、编排 commit、tag 和摘要，最后签名上传。不经过 GitHub artifact 中转，也不要求额外机器。构建步骤不注入签名 secret；同机运行属于可信源码发布流程，不宣称凭据或物理隔离。
+Plugin 使用 `run-tagged-plugin.yaml` 的单个作业，复用平台已有的自托管 runner：macOS 使用本机 Mac Studio 的 `release-macos-primary`，Linux 在现有 `release-linux-arm64` / `release-linux-amd64`。同一 runner 先运行质量检查并构建，再核对本地产物的源码、编排 commit、tag 和摘要，最后签名上传。不经过 GitHub artifact 中转，也不要求额外机器。构建步骤不注入签名 secret；同机运行属于可信源码发布流程，不宣称凭据或物理隔离。
 
 Plugin 源码必须来自 `origin/main` 上的 annotated `t` tag。没有 `t` 时不回退到 `r`。审核规则由维护者在 GitHub 配置，发布脚本不读取分支保护或历史 CI 状态，不需要跨仓库 API Token；当前冻结源码仍须通过本次构建的 `quality-gate.sh`。源码读取沿用现有 Git SSH 权限。Plugin CI 也使用现有自托管 runner，从预置仓库创建独立 worktree，只自动运行 main 提交；不在发布机上自动运行未经审核的第三方 PR。
 
