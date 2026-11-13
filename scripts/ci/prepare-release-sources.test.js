@@ -8,7 +8,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { cleanupReleaseSources } = require("./cleanup-release-sources");
-const { main: macosInputs, readPreparedInputs, checkInputs } = require("./macos-ffmpeg-inputs");
+const { main: nativeInputs, readPreparedInputs, checkInputs } = require("./native-ffmpeg-inputs");
 const {
   fetchTag,
   prepareReleaseSources,
@@ -51,8 +51,8 @@ function provisionClone(home, name, origin, branch) {
   return dest;
 }
 
-test("macOS Native freezes once and hands verified inputs to the packer without a download token", (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "mhome-mac-inputs-"));
+test("Native freezes once and hands verified macOS and Linux inputs to the packer without a download token", (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "mhome-native-inputs-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   const agent = createOrigin(t, {
     name: "agent", branch: "main", tag: "v0.11.5",
@@ -65,14 +65,27 @@ test("macOS Native freezes once and hands verified inputs to the packer without 
     }) },
   });
   const bundle = path.resolve(__dirname, "../../../baycat/scripts/bundle");
-  const pins = JSON.parse(fs.readFileSync(path.join(bundle, "ffmpeg-macos-release.json"), "utf8"));
+  const targets = [
+    ["nmr", "darwin-arm64"], ["nmx", "darwin-x64"],
+    ["nlr", "linux-arm64"], ["nlx", "linux-x64"],
+  ];
+  const pinsByPlatform = {
+    darwin: { version: "9.0.2-meow.1", recipeCommit: "a".repeat(40) },
+    linux: { version: "9.0.2-meow.2", recipeCommit: "b".repeat(40) },
+  };
+  for (const pin of Object.values(pinsByPlatform)) {
+    pin.repository = "mhome-ai/internal-releases";
+    pin.platforms = {};
+  }
   const assets = new Map();
-  for (const platform of ["darwin-arm64", "darwin-x64"]) {
+  for (const [, platform] of targets) {
+    const pins = pinsByPlatform[platform.split("-")[0]];
+    const pin = pins.platforms[platform] = {};
     for (const [suffix, key] of [["", "archiveSha256"], ["-sources", "sourcesSha256"]]) {
       const name = `ffmpeg-${pins.version}-${platform}${suffix}.tar.gz`;
       const bytes = `fixture for ${name}`;
       assets.set(name, bytes);
-      pins.platforms[platform][key] = createHash("sha256").update(bytes).digest("hex");
+      pin[key] = createHash("sha256").update(bytes).digest("hex");
     }
   }
   const baycat = createOrigin(t, {
@@ -83,8 +96,8 @@ test("macOS Native freezes once and hands verified inputs to the packer without 
       "release/sources/dependencies.json": JSON.stringify({ schemaVersion: 1, sources: {
         meowcoreRust: { repository: "mhome-ai/meowcore-rust", version: "1.0.12", commit: meowcore.commit },
       } }),
-      "scripts/bundle/ffmpeg-macos-release.json": JSON.stringify(pins),
-      "scripts/bundle/ffmpeg-macos.js": fs.readFileSync(path.join(bundle, "ffmpeg-macos.js")),
+      "scripts/bundle/ffmpeg-macos-release.json": JSON.stringify(pinsByPlatform.darwin),
+      "scripts/bundle/ffmpeg-linux-release.json": JSON.stringify(pinsByPlatform.linux),
       "scripts/bundle/verified-download-cache.js": fs.readFileSync(path.join(bundle, "verified-download-cache.js")),
     },
   });
@@ -112,8 +125,9 @@ process.exit(r.status ?? 1);
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const [release, download, tag, repoFlag, repo, pattern, asset, output, target] = process.argv.slice(2);
-assert.deepEqual([release, download, tag, repoFlag, repo, pattern, output],
-  ['release', 'download', ${JSON.stringify(`ffmpeg-${pins.version}`)}, '--repo', 'mhome-ai/internal-releases', '--pattern', '--output']);
+assert.deepEqual([release, download, repoFlag, repo, pattern, output],
+  ['release', 'download', '--repo', 'mhome-ai/internal-releases', '--pattern', '--output']);
+assert.ok(asset.startsWith(tag + '-'));
 assert.equal(process.env.GH_TOKEN, 'fixture-private-read');
 assert.equal(process.env.GITHUB_TOKEN, undefined);
 const bytes = ${JSON.stringify(Object.fromEntries(assets))}[asset];
@@ -123,14 +137,15 @@ fs.appendFileSync(${JSON.stringify(requestLog)}, asset + '\\n');
 `);
   for (const name of ["git", "gh"]) fs.chmodSync(path.join(bin, name), 0o755);
   process.env.PATH = `${bin}${path.delimiter}${originalEnv.PATH}`;
-  for (const [tag, platform] of [["nmr20261001-01", "darwin-arm64"], ["nmx20261001-01", "darwin-x64"]]) {
+  for (const [prefix, platform] of targets) {
+    const tag = `${prefix}20261001-01`;
     const root = path.join(home, ".mhome", "work", platform);
-    macosInputs(["prepare", root, tag, platform], home);
+    nativeInputs(["prepare", root, tag, platform], home);
     assert.throws(() => checkInputs(readPreparedInputs(root, tag, platform, home)),
       /Missing or changed verified FFmpeg input/);
     process.env.GH_TOKEN = "fixture-private-read";
     process.env.GITHUB_TOKEN = "fixture-publisher";
-    macosInputs(["download", root, tag, platform], home);
+    nativeInputs(["download", root, tag, platform], home);
     assert.equal(process.env.GH_TOKEN, undefined);
     const inputs = readPreparedInputs(root, tag, platform, home);
     assert.equal(inputs.revision, baycat.commit);
@@ -146,7 +161,7 @@ fs.appendFileSync(${JSON.stringify(requestLog)}, asset + '\\n');
     fs.chmodSync(damaged, 0o644);
     fs.writeFileSync(damaged, "changed after verification");
     assert.throws(() => checkInputs(inputs), /Missing or changed verified FFmpeg input/);
-    assert.throws(() => readPreparedInputs(root, tag, "linux-x64", home), /matching target/);
+    assert.throws(() => readPreparedInputs(root, tag, "windows", home), /matching target/);
     cleanupReleaseSources(root, home);
     assert.equal(fs.existsSync(root), false);
   }

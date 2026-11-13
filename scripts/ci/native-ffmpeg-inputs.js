@@ -14,12 +14,18 @@ const {
 const REPOSITORY = "mhome-ai/internal-releases";
 const SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
+const PIN_FILES = {
+  "darwin-arm64": "ffmpeg-macos-release.json",
+  "darwin-x64": "ffmpeg-macos-release.json",
+  "linux-arm64": "ffmpeg-linux-release.json",
+  "linux-x64": "ffmpeg-linux-release.json",
+};
 
 function invocation(workRoot, tag, platform, home) {
   const product = resolveProductTag(tag);
   if (product.channel !== "native" || product.platform !== platform ||
-      !["darwin-arm64", "darwin-x64"].includes(platform)) {
-    throw new Error("Expected a macOS Native tag and its matching target");
+      !Object.hasOwn(PIN_FILES, platform)) {
+    throw new Error("Expected a Unix Native tag and its matching target");
   }
   const workId = path.basename(workRoot);
   if (workRoot !== releaseWorkRoot(workId, home) &&
@@ -63,37 +69,39 @@ function readPreparedInputs(workRoot, tag, platform, home) {
   assertRevision(agentDir, agentPin.commit);
 
   const bundle = path.join(baycatDir, "scripts", "bundle");
-  const pinsFile = path.join(bundle, "ffmpeg-macos-release.json");
-  const inputs = { revision: provenance.baycat.revision, spec: null };
+  const pinsFile = path.join(bundle, PIN_FILES[platform]);
+  const inputs = { revision: provenance.baycat.revision };
   // Historical Native snapshots use the old public tool and need no secret.
   if (!fs.existsSync(pinsFile)) return inputs;
   const pins = readJson(pinsFile);
-  if (pins.repository !== REPOSITORY || !/^\d+\.\d+\.\d+-meow\.[1-9]\d*$/.test(pins.version)) {
-    throw new Error("Invalid frozen macOS FFmpeg release identity");
+  if (pins.repository !== REPOSITORY || !/^\d+\.\d+\.\d+-meow\.[1-9]\d*$/.test(pins.version) ||
+      !SHA.test(pins.recipeCommit || "")) {
+    throw new Error("Invalid frozen FFmpeg release identity");
   }
-  const { macosFfmpegSpec } = require(path.join(bundle, "ffmpeg-macos.js"));
-  const spec = macosFfmpegSpec(pins.version, platform);
-  if (!spec || !DIGEST.test(spec.archiveSha256) || !DIGEST.test(spec.sourcesSha256)) {
+  const pin = pins.platforms?.[platform];
+  if (!pin || !DIGEST.test(pin.archiveSha256 || "") || !DIGEST.test(pin.sourcesSha256 || "")) {
     throw new Error(`Missing frozen FFmpeg checksums for ${platform}`);
   }
+  const releaseTag = `ffmpeg-${pins.version}`;
+  const stem = `${releaseTag}-${platform}`;
   return {
     ...inputs,
-    spec,
-    files: [[spec.archiveName, spec.archiveSha256], [spec.sourcesName, spec.sourcesSha256]],
-    cacheRoot: path.join(workRoot, "macos-downloads"),
+    releaseTag,
+    files: [[`${stem}.tar.gz`, pin.archiveSha256], [`${stem}-sources.tar.gz`, pin.sourcesSha256]],
+    cacheRoot: path.join(workRoot, "native-downloads"),
     cache: require(path.join(bundle, "verified-download-cache.js")),
   };
 }
 
 function downloadInputs(workRoot, inputs, token) {
-  if (!inputs.spec) return;
-  if (!token) throw new Error("GPR_TOKEN is required for private macOS FFmpeg inputs");
+  if (!inputs.releaseTag) return;
+  if (!token) throw new Error("GPR_TOKEN is required for private FFmpeg inputs");
   const temporary = fs.mkdtempSync(path.join(workRoot, "ffmpeg-download-"));
   try {
     for (const [name, digest] of inputs.files) {
       const target = path.join(temporary, name);
       try {
-        execFileSync("gh", ["release", "download", inputs.spec.tag, "--repo", REPOSITORY,
+        execFileSync("gh", ["release", "download", inputs.releaseTag, "--repo", REPOSITORY,
           "--pattern", name, "--output", target], {
           env: { ...process.env, GH_TOKEN: token },
           stdio: ["ignore", "ignore", "pipe"],
@@ -110,7 +118,7 @@ function downloadInputs(workRoot, inputs, token) {
 }
 
 function checkInputs(inputs) {
-  if (!inputs.spec) return;
+  if (!inputs.releaseTag) return;
   for (const [name, digest] of inputs.files) {
     const file = inputs.cache.cacheObjectPath(inputs.cacheRoot, digest);
     if (!fs.lstatSync(file, { throwIfNoEntry: false })?.isFile() || inputs.cache.sha256File(file) !== digest) {
@@ -126,8 +134,8 @@ function main([mode, workRoot, tag, platform], home) {
     return;
   }
   if (mode !== "download" && mode !== "check") throw new Error("Expected prepare, download or check");
-  // The download step's credential is not inherited by the Git checks or
-  // helpers loaded from the frozen product. Only gh release download gets it.
+  // Strip the private credential before running source checks or loading
+  // cache helpers. Only gh release download gets it.
   const token = mode === "download" ? process.env.GH_TOKEN : undefined;
   if (mode === "download") {
     delete process.env.GH_TOKEN;

@@ -29,12 +29,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-macos_download_cache=""
+native_download_cache=""
 case "${1:-}" in
-  --prepared-macos)
-    BAYCAT_REVISION="$(node "$CI_ROOT/macos-ffmpeg-inputs.js" check "$WORK_ROOT" "$tag" "$PRODUCT_PLATFORM")"
+  --prepared-native)
+    BAYCAT_REVISION="$(node "$CI_ROOT/native-ffmpeg-inputs.js" check "$WORK_ROOT" "$tag" "$PRODUCT_PLATFORM")"
     BAYCAT_DIR="$WORK_ROOT/baycat"
-    macos_download_cache="$WORK_ROOT/macos-downloads"
+    native_download_cache="$WORK_ROOT/native-downloads"
     ;;
   '') prepare_product_sources --with-meowcore ;;
   *) fail "unknown native release argument: $1" ;;
@@ -68,7 +68,7 @@ case "$PRODUCT_PLATFORM" in
     bash scripts/release/mac/check-mac-runner.sh --skip-rust
     bash scripts/release/native/package-macos-runtime.sh \
       "$PRODUCT_PLATFORM" "$rust_target" \
-      "build/native-runtime/${PRODUCT_PLATFORM}" release prod "$macos_download_cache"
+      "build/native-runtime/${PRODUCT_PLATFORM}" release prod "$native_download_cache"
     assets_dir="build/native-runtime/${PRODUCT_PLATFORM}"
     ;;
   linux-arm64|linux-x64)
@@ -79,7 +79,7 @@ case "$PRODUCT_PLATFORM" in
     npm ci --no-audit --no-fund
     bash scripts/release/native/package-linux-runtime.sh \
       "$PRODUCT_PLATFORM" "$rust_target" \
-      "build/native-runtime/${PRODUCT_PLATFORM}"
+      "build/native-runtime/${PRODUCT_PLATFORM}" release prod "$native_download_cache"
     assets_dir="build/native-runtime/${PRODUCT_PLATFORM}"
     ;;
   windows)

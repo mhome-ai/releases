@@ -23,18 +23,21 @@ function productWorkflows() {
   );
 }
 
-test("only macOS Native FFmpeg downloads receive the private release credential", () => {
+test("only macOS and Linux Native FFmpeg downloads receive the private release credential", () => {
   const workflow = read(".github/workflows/run-tagged.yaml");
   const phases = workflow.split(/^      - name: /m).slice(1);
-  const download = phases.find((step) => step.startsWith("Download pinned macOS FFmpeg inputs\n"));
+  const download = phases.find((step) => step.startsWith("Download pinned Native FFmpeg inputs\n"));
   const build = phases.find((step) => step.startsWith("Run tagged orchestrator\n"));
   assert.ok(download && build);
-  assert.match(download, /if: runner\.os == 'macOS' && inputs\.channel == 'native'/);
+  assert.match(download, /if: inputs\.channel == 'native' && \(runner\.os == 'macOS' \|\| runner\.os == 'Linux'\)/);
   assert.ok(download.includes(PRIVATE_RELEASE_AUTH));
-  assert.match(download, /macos-ffmpeg-inputs\.js download/);
+  assert.match(download, /native-ffmpeg-inputs\.js download/);
   assert.doesNotMatch(phases.filter((step) => step !== download).join("\n"), /GPR_TOKEN/);
   assert.match(build, /GH_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
-  assert.match(build, /run\.sh" --prepared-macos/);
+  assert.match(build, /native:darwin-arm64\|native:darwin-x64\|native:linux-arm64\|native:linux-x64/);
+  assert.match(build, /args\+=\(--prepared-native\)/);
+  const script = read("scripts/ci/native-release.sh");
+  assert.match(script, /package-linux-runtime\.sh[^]*?release prod "\$native_download_cache"/);
   assert.doesNotMatch(workflow, /INTERNAL_RELEASES_READ_TOKEN/);
   assert.match(read("README.md"), /\*\*Contents: read\*\* on `mhome-ai\/internal-releases`/);
 });
@@ -299,7 +302,7 @@ test("linux runner entrypoints clone ~/.mhome sources at start", () => {
   assert.match(script, /git clone/);
   const inventory = require("node:child_process").execFileSync("bash",
     [path.join(ROOT, "runners/ensure-mhome-sources.sh"), "--list"], {encoding:"utf8"}).trim().split("\n");
-  assert.deepEqual(inventory, ["baycat", "pallas-cat", "integration", "meowcore-rust", "releases", "agent", "tiger", "foundation", "script"]);
+  assert.deepEqual(inventory, ["baycat", "pallas-cat", "integration", "meowcore-rust", "releases", "internal-releases", "agent", "tiger", "foundation", "script"]);
   assert.doesNotMatch(script, /MHOME_ROOT/);
   for (const file of [
     "runners/linux-arm64/entrypoint.sh",

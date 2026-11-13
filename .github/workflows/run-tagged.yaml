@@ -86,23 +86,23 @@ jobs:
             git -C "$releases" fetch origin "+refs/tags/${tag}:refs/tags/${tag}"
             git -C "$releases" worktree add --detach "$work/releases" "$tag"
           fi
-      - name: Freeze macOS Native sources
-        if: runner.os == 'macOS' && inputs.channel == 'native'
+      - name: Freeze Native sources
+        if: inputs.channel == 'native' && (runner.os == 'macOS' || runner.os == 'Linux')
         working-directory: ${{ steps.snapshot.outputs.work_root }}
         shell: bash
         env:
           LANG: en_US.UTF-8
           LC_ALL: en_US.UTF-8
-        run: node releases/scripts/ci/macos-ffmpeg-inputs.js prepare "$PWD" "$RELEASE_TAG" "$WORK_SUFFIX"
-      - name: Download pinned macOS FFmpeg inputs
-        if: runner.os == 'macOS' && inputs.channel == 'native'
+        run: node releases/scripts/ci/native-ffmpeg-inputs.js prepare "$PWD" "$RELEASE_TAG" "$WORK_SUFFIX"
+      - name: Download pinned Native FFmpeg inputs
+        if: inputs.channel == 'native' && (runner.os == 'macOS' || runner.os == 'Linux')
         working-directory: ${{ steps.snapshot.outputs.work_root }}
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GPR_TOKEN }}
           LANG: en_US.UTF-8
           LC_ALL: en_US.UTF-8
-        run: node releases/scripts/ci/macos-ffmpeg-inputs.js download "$PWD" "$RELEASE_TAG" "$WORK_SUFFIX"
+        run: node releases/scripts/ci/native-ffmpeg-inputs.js download "$PWD" "$RELEASE_TAG" "$WORK_SUFFIX"
       - name: Run tagged orchestrator
         shell: bash
         env:
@@ -132,11 +132,12 @@ jobs:
           work_id="${GITHUB_RUN_ID}-${WORK_SUFFIX:-$GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}"
           work="$mhome/work/$work_id"
           export WORK_ID="$work_id" WORK_ROOT="$work" RELEASES_DIR="$work/releases" MHOME_ROOT="$mhome"
-          if [ "$RELEASE_CHANNEL" = native ] && [ "$(uname -s)" = Darwin ]; then
-            bash "$RELEASES_DIR/scripts/ci/run.sh" --prepared-macos
-          else
-            bash "$RELEASES_DIR/scripts/ci/run.sh"
-          fi
+          args=()
+          case "$RELEASE_CHANNEL:$WORK_SUFFIX" in
+            native:darwin-arm64|native:darwin-x64|native:linux-arm64|native:linux-x64)
+              args+=(--prepared-native) ;;
+          esac
+          bash "$RELEASES_DIR/scripts/ci/run.sh" ${args[@]+"${args[@]}"}
       - name: Clean owned release worktrees
         if: always() && steps.snapshot.outputs.work_root != ''
         shell: bash

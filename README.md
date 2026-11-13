@@ -71,14 +71,14 @@ Agent is also a source input. Provision `~/.mhome/agent` from the private `mhome
 
 ## Private FFmpeg build inputs
 
-Mac Native Host packaging consumes the fixed FFmpeg binary/source pair from
-`mhome-ai/internal-releases`, with SHA-256 pins owned by Baycat. Android and Mac
-Native downloads use the existing organization Secret `GPR_TOKEN`. It needs
+Native Host packaging on macOS and Linux can consume fixed FFmpeg binary/source
+pairs from `mhome-ai/internal-releases`, with SHA-256 pins owned by Baycat.
+These downloads use the existing organization Secret `GPR_TOKEN`. It needs
 **Contents: read** on `mhome-ai/internal-releases`.
 Grant the Releases repository access through the Secret's selected-repository
 policy, preserving existing consumers. No additional FFmpeg Secret is required.
 
-The macOS Native workflow freezes the product sources once using the existing
+The Native workflow freezes the product sources once using the existing
 source preparation script. A separate step uses `GPR_TOKEN` as `GH_TOKEN` to
 download only the binary and source archives for the frozen target. It checks
 both SHA-256 digests and stores the files in the current invocation's verified
@@ -88,9 +88,9 @@ this credential. Publication still uses the repository's `GITHUB_TOKEN`.
 The Tauri desktop app does not bundle Host and does not receive the credential.
 Local builds can use ordinary `gh` authentication.
 
-The product package includes the matching complete source archive and upstream
-license notices; recipients do not need private GitHub access. Linux retains its
-separately pinned public FFmpeg route pending corresponding-source qualification.
+When the frozen product pins a private FFmpeg pair, the Host package carries
+the matching complete source archive and upstream license notices. The Linux
+Host Docker image uses the same Host package.
 
 ## Shared CI source bootstrap
 
@@ -163,12 +163,12 @@ Plugin 使用 `run-tagged-plugin.yaml` 的单个作业，复用平台已有的�
 
 Plugin 源码必须来自 `origin/main` 上的 annotated `t` tag。没有 `t` 时不回退到 `r`。审核规则由维护者在 GitHub 配置，发布脚本不读取分支保护或历史 CI 状态，不需要跨仓库 API Token；当前冻结源码仍须通过本次构建的 `quality-gate.sh`。源码读取沿用现有 Git SSH 权限。Plugin CI 也使用现有自托管 runner，从预置仓库创建独立 worktree，只自动运行 main 提交；不在发布机上自动运行未经审核的第三方 PR。
 
-### macOS FFmpeg cutover
+### FFmpeg cutover
 
 For this update, use the verified Native and Camera snapshots from the same
 coordinated source update. Check the chosen Native Host and Client versions
-against Camera's declared requirements. `repo-update` aligns source snapshots;
-it does not publish the Mac Stable product catalogs or update an installation.
+against Camera's declared requirements. `repo-update` aligns source snapshots.
+Stable catalogs and installed products follow their own release and update steps.
 
 Publish the matching Native and Camera packages and verify both Stable catalogs
 before updating existing Camera installations. Use the full `meow update` plan
