@@ -132,7 +132,7 @@ python3 -B runners/test_compiler_cache.py
 ```
 
 Put a read key for `baycat`, `integration`, `meowcore-rust`, `agent`, `tiger`,
-`foundation`, `script`, and `releases` at
+`foundation`, `script`, `releases`, and `internal-releases` at
 `id_ed25519` in that volume **before** the first start:
 
 ```bash
@@ -143,6 +143,15 @@ Put a read key for `baycat`, `integration`, `meowcore-rust`, `agent`, `tiger`,
 The entrypoint clones those repositories into the persistent `~/.mhome` volume if
 they are missing. Image build does not clone: the key is not in the build.
 Workflows never clone; they only `git fetch` tags into worktrees.
+The Linux FFmpeg workflow also uses the persistent `internal-releases`
+checkout. Existing containers can provision just that missing checkout with
+their existing read key. Run the clone inside each runner container as its
+configured runner user.
+
+```sh
+docker exec meow-linux-arm64-runner sh -c 'git clone git@github.com:mhome-ai/internal-releases.git "$HOME/.mhome/internal-releases"'
+docker exec meow-linux-amd64-runner sh -c 'git clone git@github.com:mhome-ai/internal-releases.git "$HOME/.mhome/internal-releases"'
+```
 
 This is only source. `docker compose` identity is the `name:` in each
 `compose.yaml`. Already-running containers and their volumes stay put when
