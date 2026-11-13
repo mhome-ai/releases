@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "meow.tts.model-packs.v1",
+  "releaseVersion": "1.0.0",
+  "packs": [
+    {
+      "id": "kokoro:v1.0-en",
+      "displayName": "Kokoro English v1.0",
+      "publicTag": "kokoro-v1.0-en-r1",
+      "modelRepository": "https://huggingface.co/hexgrad/Kokoro-82M",
+      "modelLicenseEvidenceRevision": "f3ff3571791e39611d31c381e3a41a3af07b4987",
+      "modelLicense": "Apache-2.0",
+      "exporterRepository": "https://github.com/thewh1teagle/kokoro-onnx",
+      "exporterRevision": "b85309f90fd2660ea3309cf0f2581360e4327555",
+      "exporterLicense": "MIT",
+      "modifications": "None; mirrored byte-for-byte from the exporter release.",
+      "smokeVocab": "vocab/kokoro-v1.0.json",
+      "smokeVoice": "af_heart",
+      "smokePhonemes": "həlˈoʊ wˈɜɹld",
+      "artifacts": [
+        {
+          "id": "model",
+          "fileName": "kokoro-v1.0.onnx",
+          "sourceUrl": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/kokoro-v1.0.onnx",
+          "sha256": "beb0d1848dee9a49da392cc3df26958d46cfa35d321edf434f52949153f0df3a",
+          "sizeBytes": 325505369
+        },
+        {
+          "id": "voices",
+          "fileName": "voices-v1.0.bin",
+          "sourceUrl": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin",
+          "sha256": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d",
+          "sizeBytes": 28214398
+        }
+      ]
+    },
+    {
+      "id": "kokoro:v1.1-zh",
+      "displayName": "Kokoro Chinese + English v1.1",
+      "publicTag": "kokoro-v1.1-zh-r1",
+      "modelRepository": "https://huggingface.co/hexgrad/Kokoro-82M-v1.1-zh",
+      "modelLicenseEvidenceRevision": "01e7505bd6a7a2ac4975463114c3a7650a9f7218",
+      "modelLicense": "Apache-2.0",
+      "exporterRepository": "https://github.com/thewh1teagle/kokoro-onnx",
+      "exporterRevision": "b85309f90fd2660ea3309cf0f2581360e4327555",
+      "exporterLicense": "MIT",
+      "modifications": "None; mirrored byte-for-byte from the exporter release.",
+      "smokeVocab": "vocab/kokoro-v1.1-zh.json",
+      "smokeVoice": "zf_001",
+      "smokePhonemes": "ㄋㄧ2ㄏㄠ3/ㄕ十4ㄐㄝ4",
+      "artifacts": [
+        {
+          "id": "model",
+          "fileName": "kokoro-v1.1-zh.onnx",
+          "sourceUrl": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/kokoro-v1.1-zh.onnx",
+          "sha256": "859f9ded9f53be16c24857cdab3254a45da53c3afd5ba6ef134c7de3f822e326",
+          "sizeBytes": 325506167
+        },
+        {
+          "id": "voices",
+          "fileName": "voices-v1.1-zh.bin",
+          "sourceUrl": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.1-zh.bin",
+          "sha256": "14cb6186c99e4f6016871405f62046c5df863ae27465cbdc4ee08be7dd703acd",
+          "sizeBytes": 53815880
+        }
+      ]
+    }
+  ]
+}

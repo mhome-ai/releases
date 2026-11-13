@@ -1,0 +1,80 @@
+name: Release Ollama Linux runtimes
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the engineVersion pinned in ollama/runtimes.lock.json. Bump that lock first.
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: runtime-assets
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install zstd
+        run: sudo apt-get update && sudo apt-get install -y zstd
+      - name: Validate lock and packer
+        run: npm run ollama:test
+      - name: Read release identity
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "public_tag=$(jq -r '.publicTag' ollama/runtimes.lock.json)" >> "$GITHUB_OUTPUT"
+          echo "display_name=$(jq -r '.displayName' ollama/runtimes.lock.json)" >> "$GITHUB_OUTPUT"
+          echo "engine_version=$(jq -r '.engineVersion' ollama/runtimes.lock.json)" >> "$GITHUB_OUTPUT"
+      - name: Pack Linux CPU/CUDA and macOS runtimes
+        shell: bash
+        run: npm run ollama:pack -- dist
+      - name: Preserve packed runtimes for recovery
+        if: inputs.publish
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ollama-runtimes-${{ steps.metadata.outputs.public_tag }}
+          path: runtime-assets/dist/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - name: Enforce immutable release tags
+        if: inputs.publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLIC_TAG: ${{ steps.metadata.outputs.public_tag }}
+        run: |
+          set -euo pipefail
+          if status="$(gh release view "$PUBLIC_TAG" --json tagName 2>&1)"; then
+            echo "release already exists and will not be overwritten: $PUBLIC_TAG" >&2
+            exit 1
+          elif [[ "$status" != "release not found" ]]; then
+            printf '%s\n' "$status" >&2
+            exit 1
+          fi
+      - name: Publish immutable public Ollama runtimes
+        if: inputs.publish
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ steps.metadata.outputs.public_tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.metadata.outputs.display_name }}
+          body: |
+            Ollama runtimes derived from official v${{ steps.metadata.outputs.engine_version }}.
+
+            Linux CPU packs drop `lib/ollama/cuda_v12` and `cuda_v13`. Linux CUDA packs are the official archives, renamed, and still contain both CUDA 12 and 13 so Ollama can pick at runtime. The macOS pack is the official `ollama-darwin.tgz`, mirrored unchanged. ROCm extras are not included. ARM CUDA is the SBSA/server build, not Jetson.
+
+            MIT license text and SHA-256 checksums accompany the archives. CUDA packs also contain NVIDIA CUDA libraries redistributed unchanged from upstream; see NVIDIA CUDA Toolkit EULA.
+          files: runtime-assets/dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: false
+          make_latest: false

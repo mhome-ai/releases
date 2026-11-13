@@ -1,0 +1,14 @@
+{
+  "name": "runtime-assets",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "ollama:verify": "node scripts/ollama/verify-runtimes.mjs",
+    "ollama:test": "node scripts/ollama/verify-runtimes.mjs && node scripts/ollama/pack-runtimes.test.mjs",
+    "ollama:pack": "node scripts/ollama/pack-runtimes.mjs pack",
+    "ollama:bump": "node scripts/ollama/pack-runtimes.mjs bump"
+  }
+}

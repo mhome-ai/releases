@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "meow.runtime.ollama-runtimes.v1",
+  "engineVersion": "0.32.14",
+  "publicTag": "ollama-v0.32.14",
+  "displayName": "Ollama runtimes 0.32.14",
+  "upstreamRepository": "https://github.com/ollama/ollama",
+  "upstreamTag": "v0.32.14",
+  "license": {
+    "url": "https://raw.githubusercontent.com/ollama/ollama/v0.32.14/LICENSE",
+    "sha256": "5934ed2ce0d15154bcdb9c85203210abac0da4314af34081e36df4599f90b226",
+    "spdx": "MIT"
+  },
+  "sources": {
+    "linux-amd64": {
+      "url": "https://github.com/ollama/ollama/releases/download/v0.32.14/ollama-linux-amd64.tar.zst",
+      "fileName": "ollama-linux-amd64.tar.zst",
+      "sha256": "c620917a71e146ab3a7f893084f066069c4c65d144ef8379a91c3cbe8b27de8f",
+      "sizeBytes": 1421191399
+    },
+    "linux-arm64": {
+      "url": "https://github.com/ollama/ollama/releases/download/v0.32.14/ollama-linux-arm64.tar.zst",
+      "fileName": "ollama-linux-arm64.tar.zst",
+      "sha256": "7802b739fbdc74df556600f1619f86457b69dce913301cf2d91f7f9d7f7a41b8",
+      "sizeBytes": 1542906817
+    },
+    "darwin": {
+      "url": "https://github.com/ollama/ollama/releases/download/v0.32.14/ollama-darwin.tgz",
+      "fileName": "ollama-darwin.tgz",
+      "sha256": "c7e8b91485943785bc6d295d96551e971ec94c6829d0d6b3500366942dc50cd1",
+      "sizeBytes": 153876009
+    }
+  },
+  "packs": [
+    {
+      "id": "linux-amd64-cpu",
+      "source": "linux-amd64",
+      "fileName": "ollama-linux-amd64-cpu.tar.zst",
+      "transform": "exclude",
+      "exclude": ["lib/ollama/cuda_v12", "lib/ollama/cuda_v13"],
+      "require": ["bin/ollama"],
+      "forbid": [
+        "lib/ollama/cuda_v12",
+        "lib/ollama/cuda_v13",
+        "lib/ollama/rocm",
+        "lib/ollama/mlx"
+      ]
+    },
+    {
+      "id": "linux-amd64-cuda",
+      "source": "linux-amd64",
+      "fileName": "ollama-linux-amd64-cuda.tar.zst",
+      "transform": "identity",
+      "require": ["bin/ollama", "lib/ollama/cuda_v12", "lib/ollama/cuda_v13"],
+      "forbid": ["lib/ollama/rocm", "lib/ollama/mlx"]
+    },
+    {
+      "id": "linux-arm64-cpu",
+      "source": "linux-arm64",
+      "fileName": "ollama-linux-arm64-cpu.tar.zst",
+      "transform": "exclude",
+      "exclude": ["lib/ollama/cuda_v12", "lib/ollama/cuda_v13"],
+      "require": ["bin/ollama"],
+      "forbid": [
+        "lib/ollama/cuda_v12",
+        "lib/ollama/cuda_v13",
+        "lib/ollama/rocm",
+        "lib/ollama/mlx"
+      ]
+    },
+    {
+      "id": "linux-arm64-cuda",
+      "source": "linux-arm64",
+      "fileName": "ollama-linux-arm64-cuda.tar.zst",
+      "transform": "identity",
+      "require": ["bin/ollama", "lib/ollama/cuda_v12", "lib/ollama/cuda_v13"],
+      "forbid": ["lib/ollama/rocm", "lib/ollama/mlx"]
+    },
+    {
+      "id": "darwin",
+      "source": "darwin",
+      "fileName": "ollama-darwin.tgz",
+      "transform": "identity",
+      "require": ["ollama"],
+      "forbid": ["lib/ollama/cuda_v12", "lib/ollama/cuda_v13", "lib/ollama/rocm"]
+    }
+  ]
+}

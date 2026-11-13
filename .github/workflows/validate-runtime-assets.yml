@@ -1,0 +1,38 @@
+name: Validate asset manifests
+
+on:
+  pull_request:
+    paths: ["runtime-assets/**", ".github/workflows/validate-runtime-assets.yml"]
+  push:
+    branches: [main]
+    paths: ["runtime-assets/**", ".github/workflows/validate-runtime-assets.yml"]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: runtime-assets
+
+jobs:
+  model-packs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: scripts/verify-model-packs.sh
+      - run: bash -n scripts/prepare-model-pack.sh scripts/verify-model-packs.sh
+      - run: python -m py_compile scripts/smoke-kokoro-onnx.py
+
+  camera-reid:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: scripts/verify-camera-reid.sh
+      - run: bash -n scripts/prepare-camera-reid.sh scripts/verify-camera-reid.sh scripts/publish-camera-reid.sh
+
+  ollama-runtimes:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: sudo apt-get update && sudo apt-get install -y zstd
+      - run: npm run ollama:test

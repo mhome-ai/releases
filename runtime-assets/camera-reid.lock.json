@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "meow.camera.reid-osnet.v1",
+  "version": "1.0.0",
+  "publicTag": "camera-reid-osnet-v1.0.0",
+  "displayName": "Camera ReID OSNet 1.0.0",
+  "license": "MIT",
+  "source": {
+    "repository": "https://github.com/KaiyangZhou/deep-person-reid",
+    "weights": "https://huggingface.co/kaiyangzhou/osnet",
+    "paper": "https://arxiv.org/abs/1905.00953"
+  },
+  "artifacts": [
+    {
+      "id": "osnet-x1-0",
+      "fileName": "osnet_x1_0.onnx",
+      "sourceUrl": "https://github.com/mhome-ai/releases/releases/download/camera-reid-osnet-v1.0.0/osnet_x1_0.onnx",
+      "sha256": "1f9085ac3c723e2b272c28bfdcae92df4dd6e8cbc49e753173fad1985a93e9e1",
+      "sizeBytes": 8738969
+    },
+    {
+      "id": "osnet-x0-5",
+      "fileName": "osnet_x0_5.onnx",
+      "sourceUrl": "https://github.com/mhome-ai/releases/releases/download/camera-reid-osnet-v1.0.0/osnet_x0_5.onnx",
+      "sha256": "d17a78b5c7bb44b9f81b16297efa15ec3f1e3d734486595ccf59e1e296342f82",
+      "sizeBytes": 2602895
+    },
+    {
+      "id": "osnet-x0-25",
+      "fileName": "osnet_x0_25.onnx",
+      "sourceUrl": "https://github.com/mhome-ai/releases/releases/download/camera-reid-osnet-v1.0.0/osnet_x0_25.onnx",
+      "sha256": "00dfe9f894a77390028ba7b4312f5fdf7a733bbfdade8f8c00a120cc7353132e",
+      "sizeBytes": 901030
+    }
+  ]
+}

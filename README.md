@@ -84,6 +84,11 @@ separately pinned public FFmpeg route pending corresponding-source qualification
 
 `scripts/ci/source-worktree.cjs` is used by Foundation, Agent, Tiger and MeowCore CI. Runners pre-provision each repository under `~/.mhome/` with their existing GitHub read access. The helper fetches the event commit, creates a detached worktree under a unique `~/.mhome/work/<repo>-<run>-<job>-<attempt>/`, and prepares the exact Agent pin for consumers. It never clones or changes canonical checkout branches, refuses existing work directories, and rolls back partial preparation. Cleanup removes only recorded task-owned worktrees. Workflows load the helper from the Releases main commit they just fetched; deliver this helper before dependent workflow updates.
 
+## Runtime assets
+
+[Runtime asset releases](./runtime-assets/README.md) cover G2P, Kokoro, Ollama,
+and Camera ReID. Each uses its own release tag in this repository.
+
 ## Matter ESP32-C5 firmware
 
 `matter-esp32c5.yaml` publishes the 32 MB flash / 8 MB PSRAM `psram_ble` board
