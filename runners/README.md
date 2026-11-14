@@ -143,7 +143,7 @@ Put a read key for `baycat`, `integration`, `meowcore-rust`, `agent`, `tiger`,
 The entrypoint clones those repositories into the persistent `~/.mhome` volume if
 they are missing. Image build does not clone: the key is not in the build.
 Workflows never clone; they only `git fetch` tags into worktrees.
-The Linux FFmpeg workflow also uses the persistent `internal-releases`
+The Linux jobs in Build FFmpeg also use the persistent `internal-releases`
 checkout. Existing containers can provision just that missing checkout with
 their existing read key. Run the clone inside each runner container as its
 configured runner user.

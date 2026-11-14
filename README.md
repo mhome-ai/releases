@@ -78,6 +78,8 @@ These downloads use the existing organization Secret `GPR_TOKEN`. It needs
 Grant the Releases repository access through the Secret's selected-repository
 policy, preserving existing consumers. No additional FFmpeg Secret is required.
 
+The Native workflow reads Baycat's pin file, which names one official FFmpeg
+release for all four targets. Historical snapshots retain their pinned assets.
 The Native workflow freezes the product sources once using the existing
 source preparation script. A separate step uses `GPR_TOKEN` as `GH_TOKEN` to
 download only the binary and source archives for the frozen target. It checks

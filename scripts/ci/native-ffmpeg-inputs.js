@@ -14,7 +14,8 @@ const {
 const REPOSITORY = "mhome-ai/internal-releases";
 const SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
-const PIN_FILES = {
+const OFFICIAL_VERSION = /^(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){1,2}$/;
+const HISTORICAL_PIN_FILES = {
   "darwin-arm64": "ffmpeg-macos-release.json",
   "darwin-x64": "ffmpeg-macos-release.json",
   "linux-arm64": "ffmpeg-linux-release.json",
@@ -24,7 +25,7 @@ const PIN_FILES = {
 function invocation(workRoot, tag, platform, home) {
   const product = resolveProductTag(tag);
   if (product.channel !== "native" || product.platform !== platform ||
-      !Object.hasOwn(PIN_FILES, platform)) {
+      !Object.hasOwn(HISTORICAL_PIN_FILES, platform)) {
     throw new Error("Expected a Unix Native tag and its matching target");
   }
   const workId = path.basename(workRoot);
@@ -69,20 +70,42 @@ function readPreparedInputs(workRoot, tag, platform, home) {
   assertRevision(agentDir, agentPin.commit);
 
   const bundle = path.join(baycatDir, "scripts", "bundle");
-  const pinsFile = path.join(bundle, PIN_FILES[platform]);
   const inputs = { revision: provenance.baycat.revision };
-  // Historical Native snapshots use the old public tool and need no secret.
-  if (!fs.existsSync(pinsFile)) return inputs;
-  const pins = readJson(pinsFile);
-  if (pins.repository !== REPOSITORY || !/^\d+\.\d+\.\d+-meow\.[1-9]\d*$/.test(pins.version) ||
-      !SHA.test(pins.recipeCommit || "")) {
-    throw new Error("Invalid frozen FFmpeg release identity");
+  const unified = path.join(bundle, "ffmpeg-release.json");
+  const historical = path.join(bundle, HISTORICAL_PIN_FILES[platform]);
+  let repository, pin;
+  if (fs.existsSync(unified)) {
+    const pins = readJson(unified);
+    repository = pins.repository;
+    const available = Object.entries(pins.releases).filter(([, release]) =>
+      Object.hasOwn(release.platforms, platform)
+    );
+    if (available.length !== 1)
+      throw new Error(`Expected one frozen FFmpeg input for ${platform}`);
+    const [[version, release]] = available;
+    if (OFFICIAL_VERSION.test(version) &&
+        (Object.keys(release.platforms).length !== Object.keys(HISTORICAL_PIN_FILES).length ||
+         Object.keys(HISTORICAL_PIN_FILES).some((target) => !Object.hasOwn(release.platforms, target))))
+      throw new Error("An official FFmpeg release must cover all four targets");
+    pin = { ...release.platforms[platform], version, recipeCommit: release.recipeCommit };
+  } else if (fs.existsSync(historical)) {
+    const pins = readJson(historical);
+    repository = pins.repository;
+    const target = pins.platforms?.[platform];
+    if (target) pin = { ...target, version: pins.version, recipeCommit: pins.recipeCommit };
+  } else {
+    // Snapshots before private tool releases used publicly available inputs.
+    return inputs;
   }
-  const pin = pins.platforms?.[platform];
-  if (!pin || !DIGEST.test(pin.archiveSha256 || "") || !DIGEST.test(pin.sourcesSha256 || "")) {
+  const legacyVersion = platform.startsWith("darwin-") ? "9.0.2-meow.1" : "9.0.2-meow.2";
+  if (repository !== REPOSITORY || !pin || !SHA.test(pin.recipeCommit || "") ||
+      !(pin.version === legacyVersion || OFFICIAL_VERSION.test(pin.version || ""))) {
+    throw new Error(`Invalid frozen FFmpeg release identity for ${platform}`);
+  }
+  if (!DIGEST.test(pin.archiveSha256 || "") || !DIGEST.test(pin.sourcesSha256 || "")) {
     throw new Error(`Missing frozen FFmpeg checksums for ${platform}`);
   }
-  const releaseTag = `ffmpeg-${pins.version}`;
+  const releaseTag = `ffmpeg-${pin.version}`;
   const stem = `${releaseTag}-${platform}`;
   return {
     ...inputs,

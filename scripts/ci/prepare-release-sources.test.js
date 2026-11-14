@@ -69,6 +69,12 @@ test("Native freezes once and hands verified macOS and Linux inputs to the packe
     ["nmr", "darwin-arm64"], ["nmx", "darwin-x64"],
     ["nlr", "linux-arm64"], ["nlx", "linux-x64"],
   ];
+  const officialVersion = "9.0.3";
+  const official = { recipeCommit: "c".repeat(40), platforms: {} };
+  const publishedPins = {
+    repository: "mhome-ai/internal-releases",
+    releases: { [officialVersion]: official },
+  };
   const pinsByPlatform = {
     darwin: { version: "9.0.2-meow.1", recipeCommit: "a".repeat(40) },
     linux: { version: "9.0.2-meow.2", recipeCommit: "b".repeat(40) },
@@ -81,11 +87,16 @@ test("Native freezes once and hands verified macOS and Linux inputs to the packe
   for (const [, platform] of targets) {
     const pins = pinsByPlatform[platform.split("-")[0]];
     const pin = pins.platforms[platform] = {};
+    const published = official.platforms[platform] = {};
     for (const [suffix, key] of [["", "archiveSha256"], ["-sources", "sourcesSha256"]]) {
       const name = `ffmpeg-${pins.version}-${platform}${suffix}.tar.gz`;
       const bytes = `fixture for ${name}`;
       assets.set(name, bytes);
       pin[key] = createHash("sha256").update(bytes).digest("hex");
+      const publishedName = `ffmpeg-${officialVersion}-${platform}${suffix}.tar.gz`;
+      const publishedBytes = `fixture for ${publishedName}`;
+      assets.set(publishedName, publishedBytes);
+      published[key] = createHash("sha256").update(publishedBytes).digest("hex");
     }
   }
   const baycat = createOrigin(t, {
@@ -103,7 +114,15 @@ test("Native freezes once and hands verified macOS and Linux inputs to the packe
   });
   provisionClone(home, "agent", agent, "main");
   provisionClone(home, "meowcore-rust", meowcore, "main");
-  provisionClone(home, "baycat", baycat, "master");
+  const baycatClone = provisionClone(home, "baycat", baycat, "master");
+  write(path.join(baycatClone, "scripts/bundle/ffmpeg-release.json"), JSON.stringify(publishedPins));
+  git(baycatClone, "add", "scripts/bundle/ffmpeg-release.json");
+  git(baycatClone, "-c", "user.name=Release Test", "-c", "user.email=release@example.invalid",
+    "commit", "-qm", "Use one official FFmpeg release");
+  git(baycatClone, "-c", "user.name=Release Test", "-c", "user.email=release@example.invalid",
+    "tag", "-a", "t20261002-01", "-m", "t20261002-01");
+  git(baycatClone, "push", "-q", "origin", "master", "refs/tags/t20261002-01");
+  const officialCommit = git(baycatClone, "rev-parse", "HEAD");
 
   const originalEnv = { PATH: process.env.PATH, GH_TOKEN: process.env.GH_TOKEN, GITHUB_TOKEN: process.env.GITHUB_TOKEN };
   t.after(() => {
@@ -137,35 +156,39 @@ fs.appendFileSync(${JSON.stringify(requestLog)}, asset + '\\n');
 `);
   for (const name of ["git", "gh"]) fs.chmodSync(path.join(bin, name), 0o755);
   process.env.PATH = `${bin}${path.delimiter}${originalEnv.PATH}`;
-  for (const [prefix, platform] of targets) {
-    const tag = `${prefix}20261001-01`;
-    const root = path.join(home, ".mhome", "work", platform);
-    nativeInputs(["prepare", root, tag, platform], home);
-    assert.throws(() => checkInputs(readPreparedInputs(root, tag, platform, home)),
-      /Missing or changed verified FFmpeg input/);
-    process.env.GH_TOKEN = "fixture-private-read";
-    process.env.GITHUB_TOKEN = "fixture-publisher";
-    nativeInputs(["download", root, tag, platform], home);
-    assert.equal(process.env.GH_TOKEN, undefined);
-    const inputs = readPreparedInputs(root, tag, platform, home);
-    assert.equal(inputs.revision, baycat.commit);
-    checkInputs(inputs);
-    for (const [name, digest] of inputs.files) {
-      const target = path.join(root, name);
-      assert.equal(inputs.cache.restoreVerifiedDownload({
-        cacheRoot: inputs.cacheRoot, expectedSha256: digest, targetPath: target,
-      }), true);
-      assert.equal(fs.readFileSync(target, "utf8"), assets.get(name));
+  const requested = [];
+  for (const [source, commit] of [["20261001-01", baycat.commit], ["20261002-01", officialCommit]]) {
+    for (const [prefix, platform] of targets) {
+      const tag = `${prefix}${source}`;
+      const root = path.join(home, ".mhome", "work", platform);
+      nativeInputs(["prepare", root, tag, platform], home);
+      assert.throws(() => checkInputs(readPreparedInputs(root, tag, platform, home)),
+        /Missing or changed verified FFmpeg input/);
+      process.env.GH_TOKEN = "fixture-private-read";
+      process.env.GITHUB_TOKEN = "fixture-publisher";
+      nativeInputs(["download", root, tag, platform], home);
+      assert.equal(process.env.GH_TOKEN, undefined);
+      const inputs = readPreparedInputs(root, tag, platform, home);
+      assert.equal(inputs.revision, commit);
+      checkInputs(inputs);
+      for (const [name, digest] of inputs.files) {
+        requested.push(name);
+        const target = path.join(root, name);
+        assert.equal(inputs.cache.restoreVerifiedDownload({
+          cacheRoot: inputs.cacheRoot, expectedSha256: digest, targetPath: target,
+        }), true);
+        assert.equal(fs.readFileSync(target, "utf8"), assets.get(name));
+      }
+      const damaged = inputs.cache.cacheObjectPath(inputs.cacheRoot, inputs.files[0][1]);
+      fs.chmodSync(damaged, 0o644);
+      fs.writeFileSync(damaged, "changed after verification");
+      assert.throws(() => checkInputs(inputs), /Missing or changed verified FFmpeg input/);
+      assert.throws(() => readPreparedInputs(root, tag, "windows", home), /matching target/);
+      cleanupReleaseSources(root, home);
+      assert.equal(fs.existsSync(root), false);
     }
-    const damaged = inputs.cache.cacheObjectPath(inputs.cacheRoot, inputs.files[0][1]);
-    fs.chmodSync(damaged, 0o644);
-    fs.writeFileSync(damaged, "changed after verification");
-    assert.throws(() => checkInputs(inputs), /Missing or changed verified FFmpeg input/);
-    assert.throws(() => readPreparedInputs(root, tag, "windows", home), /matching target/);
-    cleanupReleaseSources(root, home);
-    assert.equal(fs.existsSync(root), false);
   }
-  assert.deepEqual(fs.readFileSync(requestLog, "utf8").trim().split("\n"), [...assets.keys()]);
+  assert.deepEqual(fs.readFileSync(requestLog, "utf8").trim().split("\n"), requested);
 });
 
 test("prepares sibling worktrees from product tags and leaves HEAD clones alone", (t) => {
