@@ -168,16 +168,22 @@ Plugin 源码必须来自 `origin/main` 上的 annotated `t` tag。没有 `t` �
 ### FFmpeg cutover
 
 For this update, use the verified Native and Camera snapshots from the same
-coordinated source update. Check the chosen Native Host and Client versions
-against Camera's declared requirements. `repo-update` aligns source snapshots.
-Stable catalogs and installed products follow their own release and update steps.
+coordinated source update. Before releasing on Linux, verify that the new
+Camera's Client and Host requirements are satisfied by both the current Stable
+versions and the planned Native versions.
 
-Publish the matching Native and Camera packages and verify both Stable catalogs
-before updating existing Camera installations. Use the full `meow update` plan
-with both catalogs so the Client, Host, and installed Camera move together. Do
-not perform a Host-only upgrade across this FFmpeg change: the old Camera may
-reject the new tool. A separate bridge release is not needed for this coordinated
-update. Publishing the catalogs independently does not make the update atomic.
+1. Publish the new Camera for Linux ARM64 and Linux x64. Verify that both Plugin
+   Stable catalogs point to the intended Camera build. This Camera accepts the
+   current Host tool (`b6.1.1`) and the new Host tool (`9.0.2-meow.2`).
+2. Publish the matching Native versions. This promotes the Host to Stable and
+   publishes the Linux Host container. Verify the Native and Plugin Stable
+   catalogs for each architecture.
+3. On existing Camera installations, run the full `meow update` so the update
+   plan includes Camera alongside Client and Host. A manual Host-only upgrade
+   requires the new Camera to be installed on that machine first.
+
+The two catalogs are promoted independently. Promoting the Linux Host first
+would expose a combination where the previous Camera rejects the new FFmpeg.
 
 ## Desktop platform update feeds
 

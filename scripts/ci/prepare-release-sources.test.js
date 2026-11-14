@@ -69,7 +69,7 @@ test("Native freezes once and hands verified macOS and Linux inputs to the packe
     ["nmr", "darwin-arm64"], ["nmx", "darwin-x64"],
     ["nlr", "linux-arm64"], ["nlx", "linux-x64"],
   ];
-  const officialVersion = "9.0.3";
+  const officialVersion = "9.1";
   const official = { recipeCommit: "c".repeat(40), platforms: {} };
   const publishedPins = {
     repository: "mhome-ai/internal-releases",
