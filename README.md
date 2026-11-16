@@ -119,8 +119,8 @@ Source and orchestrator use sibling worktrees under `~/.mhome/work/<run>/`.
 
 The existing `release-macos-primary` runner requires pre-provisioned
 `~/.mhome/{releases,meow-matter-esp}`, read access to both repositories, Node 20+,
-Python 3, GitHub CLI, minisign and ESP-IDF 5.5.5 installed at
-`$HOME/esp/esp-idf-v5.5.5`. Source-check jobs also need Homebrew mbedTLS. Configure
+Python 3, GitHub CLI, minisign and ESP-IDF 5.5.6 installed at
+`$HOME/esp/esp-idf-v5.5.6`. Source-check jobs also need Homebrew mbedTLS. Configure
 the existing `PLUGIN_CATALOG_PRIVATE_KEY_B64` Secret for this repository; its key
 must match the publisher public key already trusted by the firmware and MeowCore.
 No key rotation is part of this workflow. Signing gets the private key in a

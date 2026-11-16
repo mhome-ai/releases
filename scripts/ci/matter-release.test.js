@@ -146,15 +146,20 @@ test("verified-looking tags outside main cannot enter release preparation", t =>
   assert.equal(fs.existsSync(path.join(root, ".mhome/work/unreviewed/meow-matter-esp")), false);
 });
 
-test("publication verifies uploads, preserves public bytes and retries without rebuilding", t => {
+for (const sdkVersion of ["5.5.5", "5.5.6"]) test(`publication preserves SDK ${sdkVersion} provenance, public bytes and retry behavior`, t => {
   const root = temporary(t);
+  const archive = path.join(root, "firmware.tar.gz");
+  execFileSync("python3", ["-c",
+    "import io,json,sys,tarfile\ndata=json.dumps({'idfVersion':sys.argv[2]}).encode()\nwith tarfile.open(sys.argv[1], 'w:gz') as archive:\n entry=tarfile.TarInfo('release.json'); entry.size=len(data); archive.addfile(entry, io.BytesIO(data))",
+    archive, sdkVersion]);
+  const firmware = fs.readFileSync(archive);
+  const encoded = firmware.toString("base64");
   const source = repository(root, "source", "t20261026-01", {
-    "scripts/package-firmware.py": 'import pathlib, sys\na=sys.argv\np=pathlib.Path(a[a.index("--archive")+1])\nif a[1] == "pack": p.write_bytes(b"verified firmware")\nassert p.read_bytes() == b"verified firmware"\n',
+    "scripts/package-firmware.py": `import base64,pathlib,sys\na=sys.argv\np=pathlib.Path(a[a.index("--archive")+1])\ndata=base64.b64decode(${JSON.stringify(encoded)})\nif a[1] == "pack": p.write_bytes(data)\nassert p.read_bytes() == data\n`,
     "scripts/build.sh": '#!/usr/bin/env bash\nset -euo pipefail\nmkdir -p build/release-psram_ble\nprintf "fixture compiler output\\n"\n',
   });
   const orchestrator = repository(root, "orchestrator", "mec520261026-01");
-  const archive = write(root, "firmware.tar.gz", "verified firmware");
-  const digest = "sha256:" + crypto.createHash("sha256").update("verified firmware").digest("hex");
+  const digest = "sha256:" + crypto.createHash("sha256").update(firmware).digest("hex");
   const state = { source, tag: orchestrator.tag, version: "1.2.3", orchestratorDirectory: orchestrator.directory,
     orchestrator: orchestrator.revision, orchestratorTagObject: orchestrator.tagObject,
     assetName: "meowlink-matter-esp32c5-1.2.3.tar.gz", archive, bundle: path.join(root, "manifest.bundle.json"), reuse: true };
@@ -173,7 +178,7 @@ else if (args[1] === 'create') releases.push({tag_name: args[2], draft: true, as
 else if (args[1] === 'upload') {
   if (args.includes('--clobber')) throw Error('overwrite forbidden');
   releases[0].assets.push({name: ${JSON.stringify(state.assetName)}, state: 'uploaded', digest: ${JSON.stringify(digest)}});
-} else if (args[1] === 'download') fs.writeFileSync(args[args.indexOf('--output') + 1], 'verified firmware');
+} else if (args[1] === 'download') fs.writeFileSync(args[args.indexOf('--output') + 1], Buffer.from(${JSON.stringify(encoded)}, 'base64'));
 else if (args[1] === 'edit') releases[0].draft = false;
 else throw Error('unexpected gh command ' + args);
 fs.writeFileSync(db, JSON.stringify(releases));
@@ -187,16 +192,17 @@ fs.writeFileSync(db, JSON.stringify(releases));
   fs.writeFileSync(path.join(root, "matter-release.json"), JSON.stringify({ ...state, reuse: false }));
   fs.unlinkSync(archive);
   execute("build"); // Exercise compiler streaming and the transition into packaging.
-  assert.equal(fs.readFileSync(archive, "utf8"), "verified firmware");
+  assert.deepEqual(fs.readFileSync(archive), firmware);
   fs.writeFileSync(path.join(root, "matter-release.json"), JSON.stringify(state));
   execute("publish");
+  assert.ok(fs.readFileSync(path.join(root, "matter-notes.md"), "utf8").includes(`ESP-IDF ${sdkVersion}.`));
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, "gh-state.json")))[0].draft, false);
   fs.unlinkSync(path.join(root, "matter-upload-verified.tar.gz"));
   fs.writeFileSync(path.join(root, "gh-calls.jsonl"), "");
   execute("publish");
   const calls = fs.readFileSync(path.join(root, "gh-calls.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
   assert.equal(calls.some(args => ["create", "upload", "edit"].includes(args[1])), false);
-  assert.equal(fs.readFileSync(archive, "utf8"), "verified firmware");
+  assert.deepEqual(fs.readFileSync(archive), firmware);
   fs.writeFileSync(archive, "wrong firmware");
   assert.throws(() => execute("publish"));
 });

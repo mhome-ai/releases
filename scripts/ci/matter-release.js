@@ -137,9 +137,14 @@ function publish(ctx, state) {
   let release = selectRelease(listReleases(ctx.repo), state.tag, state.assetName);
   let asset = archiveAsset(release, state.assetName);
   if (!release) {
+    // The selected immutable source snapshot may use an older SDK.
+    const sdkVersion = run("python3", ["-c",
+      "import json,sys,tarfile\nwith tarfile.open(sys.argv[1], 'r:gz') as archive:\n print(json.load(archive.extractfile('release.json'))['idfVersion'])",
+      state.archive]);
+    if (!/^\d+\.\d+\.\d+$/.test(sdkVersion)) throw new Error("Invalid SDK version in verified firmware provenance");
     const notes = path.join(ctx.root, "matter-notes.md");
     fs.writeFileSync(notes, `MeowLink Matter firmware ${state.version} for ESP32-C5 with 32 MB flash and 8 MB PSRAM.\n\n`
-      + `Source: ${state.source.tag} (${state.source.revision}). ESP-IDF 5.5.5.\n\n`
+      + `Source: ${state.source.tag} (${state.source.revision}). ESP-IDF ${sdkVersion}.\n\n`
       + "Archive contains the application, bootloader, partition table, initial OTA data, flash offsets, signed Node declaration and SHA-256/provenance record.\n"
       + "This release does not perform flashing or hardware acceptance. Preserve device identity and NVS when updating.\n");
     run("gh", ["release", "create", state.tag, "--repo", ctx.repo, "--verify-tag", "--draft", "--latest=false",
