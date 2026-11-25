@@ -1,0 +1,98 @@
+name: Build signed Baycat House acceptance DMG
+
+on:
+  push:
+    branches: [codex/baycat-house-signed-acceptance]
+
+permissions:
+  contents: read
+
+jobs:
+  signed-dmg:
+    runs-on: [self-hosted, macOS, ARM64, release-macos-primary]
+    concurrency:
+      group: desktop-release
+      cancel-in-progress: false
+    timeout-minutes: 150
+    env:
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Prepare verified Baycat release sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK_DIR="$RUNNER_TEMP/baycat-house-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          printf 'WORK_DIR=%s\n' "$WORK_DIR" >> "$GITHUB_ENV"
+          mkdir "$WORK_DIR"
+          cd "$WORK_DIR"
+          clone_ref() {
+            local name="$1" reference="$2" commit="$3"
+            git init -q "$name"
+            git -C "$name" remote add origin "git@github.com:mhome-ai/${name}.git"
+            git -C "$name" fetch --no-tags --depth=1 origin "$reference:$reference"
+            test "$(git -C "$name" rev-parse "$reference^{commit}")" = "$commit"
+            git -C "$name" checkout --detach "$commit"
+          }
+          clone_ref baycat refs/heads/b-house-local 7ffaf3296e1905a0312be60923ee27bc1af94c18
+          clone_ref pallas-cat refs/tags/v1.39.2 16470cbf503dcba13df86e7b44305a46a21696d7
+          clone_ref meowcore-rust refs/tags/v1.122.3 116da6d0bf3e42dbaec6ba250ca5c69f7ed42311
+          clone_ref agent refs/tags/v0.74.27 cb761c6ff2e7c24aaadd96704711468a22e0c3e0
+          cd baycat
+          bash scripts/ci/ci-install-release-deps.sh 1.7.0
+
+      - name: Build, verify and notarize the signed DMG
+        shell: bash
+        env:
+          APPLE_CSC_LINK: ${{ secrets.APPLE_CSC_LINK }}
+          APPLE_CSC_KEY_PASSWORD: ${{ secrets.APPLE_CSC_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+        run: |
+          set -euo pipefail
+          signing="$GITHUB_WORKSPACE/scripts/ci/macos-signing-keychain.sh"
+          trap 'bash "$signing" release baycat-house-acceptance' EXIT
+          bash "$signing" acquire baycat-house-acceptance
+          cd "$WORK_DIR/baycat"
+          mac=scripts/release/mac
+          bash "$mac/check-mac-runner.sh" --skip-rust
+          rustup target list --installed | grep -Fx aarch64-apple-darwin
+          target=aarch64-apple-darwin
+          CI=true npm run tauri:build:signed -- --target "$target" --bundles app
+          app="tauri/target/$target/release/bundle/macos/MeowLink.app"
+          bash "$mac/verify-mac-app-architectures.sh" "$app" "$target"
+          bash "$mac/sign-mac-app-bundle.sh" "$app"
+          bash "$mac/verify-mac-app-signatures.sh" "$app"
+          mkdir "$WORK_DIR/artifact"
+          dmg="$WORK_DIR/artifact/MeowLink_1.7.0_aarch64.dmg"
+          bash "$mac/create-mac-installer-dmg.sh" "$app" "$dmg" 'MeowLink Installer'
+          bash "$mac/codesign-mac-release.sh" --force "$dmg"
+          bash "$mac/notarize-mac-dmg.sh" --require-staple "$dmg"
+          codesign --verify --strict --verbose=2 "$dmg"
+          xcrun stapler validate "$dmg"
+          hdiutil verify "$dmg"
+          cd "$WORK_DIR/artifact"
+          shasum -a 256 MeowLink_1.7.0_aarch64.dmg | tee SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: baycat-house-signed-macos-arm64
+          path: ${{ env.WORK_DIR }}/artifact/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Clean the isolated build checkout
+        if: always()
+        shell: bash
+        run: |
+          case "${WORK_DIR:-}" in
+            "") exit 0 ;;
+            "$RUNNER_TEMP"/baycat-house-"$GITHUB_RUN_ID"-"$GITHUB_RUN_ATTEMPT") rm -rf -- "$WORK_DIR" ;;
+            *) exit 1 ;;
+          esac
