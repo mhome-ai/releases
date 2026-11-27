@@ -393,3 +393,12 @@ The `developer-kit.yaml` dispatch entry calls `run-developer-kit.yaml` at the sa
 commit. AWS trust names that reusable workflow, so its `job_workflow_ref` claim is
 present; direct dispatch jobs cannot satisfy that trust condition. All platform
 jobs remain self-hosted.
+
+## Optional platform checks
+
+`platform-check.yaml` is a manual, read-only check of fixed Dev profile roots.
+The workspace `scripts/repo-check-platform.sh` previews or dispatches it for Linux
+ARM64/x64. It runs the existing Integration quality gate and Baycat Linux packaging
+helper tests, verifies exact t-tag/full-SHA inputs and derived Core/Agent pins,
+then cleans its detached sources. It neither publishes nor gates Mac Dev beta.
+Windows has no complete runnable check yet. Formal release checks are unchanged.

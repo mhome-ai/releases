@@ -19,9 +19,24 @@ function workflowFiles() {
 
 function productWorkflows() {
   return workflowFiles().filter(
-    (file) => !/\/run-tagged(?:-plugin|-matter)?\.yaml$/.test(file) && !/\/(?:run-)?developer-(?:kit|sdk)\.yaml$/.test(file)
+    (file) => !file.endsWith("/platform-check.yaml") && !/\/run-tagged(?:-plugin|-matter)?\.yaml$/.test(file) && !/\/(?:run-)?developer-(?:kit|sdk)\.yaml$/.test(file)
   );
 }
+
+test("optional platform checks are manual/read-only, pinned and cancellation-cleaned", () => {
+  const workflow = read(".github/workflows/platform-check.yaml");
+  assert.match(workflow, /^  workflow_dispatch:/m);
+  assert.doesNotMatch(workflow, /^  (push|create|pull_request|schedule):/m);
+  assert.match(workflow, /^  contents: read$/m);
+  assert.doesNotMatch(workflow, /secrets\.|: write|^\s+env:/m);
+  assert.match(workflow, /release-linux-amd64/);
+  assert.match(workflow, /release-linux-arm64/);
+  assert.match(workflow, /worktree add --detach "\$work" "\$GITHUB_SHA"/);
+  assert.match(workflow, /--event "\$GITHUB_EVENT_PATH"/);
+  assert.match(workflow, /always\(\) && steps\.products\.outputs\.source-root != ''/);
+  assert.match(workflow, /cleanup-release-sources\.js/);
+  assert.doesNotMatch(workflow, /run-tagged|gh release|git.*push/);
+});
 
 test("only macOS and Linux Native FFmpeg downloads receive the private release credential", () => {
   const workflow = read(".github/workflows/run-tagged.yaml");

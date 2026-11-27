@@ -273,6 +273,7 @@ function writeProvenance({
 
 function prepareReleaseSources({
   version,
+  expectedRevision,
   workId,
   withMeowcore = true,
   withPallas = false,
@@ -297,7 +298,10 @@ function prepareReleaseSources({
   const pallasDir = withPallas ? path.join(workRoot, "pallas-cat") : "";
 
   requireExistingClone(PRODUCT_REPOS.baycat, baycatClone);
-  fetchTag(baycatClone, sourceTag);
+  const baycatRevision = fetchTag(baycatClone, sourceTag);
+  if (expectedRevision && baycatRevision !== expectedRevision) {
+    fail(`baycat ${sourceTag} is ${baycatRevision}, profile requires ${expectedRevision}`);
+  }
   addDetachedWorktree(baycatClone, baycatDir, sourceTag);
 
   let pallasPin = null;
