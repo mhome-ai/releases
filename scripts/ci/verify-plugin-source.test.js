@@ -30,4 +30,12 @@ test('source admission uses remote main and rejects an unmerged source commit', 
   git(origin, 'commit', '--allow-empty', '-m', 'next approved');
   verifyPluginSource(clone, git(origin, 'rev-parse', 'HEAD'));
   assert.equal(git(clone, 'rev-parse', 'HEAD'), approved);
+  // Optional checks admit the same publication provenance as r -> t, while
+  // formal publication remains main-only. Deleted branches must not admit stale refs.
+  assert.throws(() => verifyPluginSource(clone, unmerged, { allowPublicationBranch: true }), /main or a repo-update/);
+  git(origin, 'branch', 'repo-update/fixture', unmerged);
+  verifyPluginSource(clone, unmerged, { allowPublicationBranch: true });
+  assert.throws(() => verifyPluginSource(clone, unmerged));
+  git(origin, 'branch', '-D', 'repo-update/fixture');
+  assert.throws(() => verifyPluginSource(clone, unmerged, { allowPublicationBranch: true }), /main or a repo-update/);
 });

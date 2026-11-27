@@ -14,7 +14,7 @@ const {
   printOutputs,
 } = require("./prepare-release-sources");
 
-function preparePluginSources({ version, tag, expectedRevision, workId, home = os.homedir() }) {
+function preparePluginSources({ version, tag, expectedRevision, allowPublicationBranch = false, workId, home = os.homedir() }) {
   if (/^r\d{8}-\d{2}$/.test(tag || "")) {
     throw new Error(
       `refusing attempt tag ${tag}; plugin releases only accept verified snapshot t${tag.slice(1)}`
@@ -29,7 +29,7 @@ function preparePluginSources({ version, tag, expectedRevision, workId, home = o
   if (expectedRevision && revision !== expectedRevision) {
     throw new Error(`integration ${tag} is ${revision}, profile requires ${expectedRevision}`);
   }
-  require("./verify-plugin-source").verifyPluginSource(clone, revision);
+  require("./verify-plugin-source").verifyPluginSource(clone, revision, { allowPublicationBranch });
   const directory = path.join(releaseWorkRoot(workId, home), "integration");
   if (fs.existsSync(directory))
     throw new Error(`Refusing existing plugin worktree: ${directory}`);

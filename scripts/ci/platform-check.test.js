@@ -110,3 +110,22 @@ test("invalid profiles and Windows never create source work", () => {
     integration: { tag: "t20261127-02", commit: "b".repeat(40) },
   } }, platform: "windows-x64" }), /not verified/);
 });
+
+test("independent checks admit a fixed t on a publication branch before main synchronization", (t) => {
+  const fixture = setup(t);
+  const seed = path.join(fixture.home, "seed-integration");
+  git(seed, "remote", "add", "origin", path.join(fixture.home, "integration.git"));
+  git(seed, "switch", "-c", "repo-update/fixture");
+  fs.writeFileSync(path.join(seed, "next-source"), "frozen publication source");
+  git(seed, "add", "."); git(seed, "commit", "-qm", "publication source");
+  const commit = git(seed, "rev-parse", "HEAD");
+  const tag = "t20261127-03";
+  git(seed, "tag", "-a", tag, "-m", "verified fixture");
+  git(seed, "push", "origin", "repo-update/fixture", `refs/tags/${tag}`);
+  fixture.profile.roots.integration = { tag, commit };
+  let checks = 0;
+  const result = runChecks({ ...fixture, platform: "linux-x64", run: () => { checks++; } });
+  assert.equal(checks, 4);
+  assert.equal(result.profile.roots.integration.commit, commit);
+  assert.equal(fs.existsSync(fixture.work), false);
+});

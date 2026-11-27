@@ -44,6 +44,7 @@ function runChecks({ profile, platform, workId, home = os.homedir(), run = execF
     });
     const plugins = preparePluginSources({
       tag: profile.roots.integration.tag, expectedRevision: profile.roots.integration.commit, workId, home,
+      allowPublicationBranch: true,
     });
     for (const [name, actual] of [["baycat", sources.baycat_revision], ["integration", plugins.plugin_revision]]) {
       const pin = profile.roots[name];
